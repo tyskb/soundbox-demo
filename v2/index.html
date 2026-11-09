@@ -14,8 +14,9 @@
 </script>
 <style>
 :root{
-  --bg:#f3f2ee; --card:#faf9f6; --stage:#e9e7e1;
-  --ink:#1c2023; --ink-2:#4a4f54; --muted:#767a7e; --line:#dcd9d2; --line-2:#c6c2b9;
+  --bg:#eeece6; --card:#ffffff; --stage:#e2dfd7;
+  --ink:#111417; --ink-2:#33383d; --muted:#5a5f64; --line:#cfcac0; --line-2:#9f998d;
+  --dark:#15181b; --on-dark:#f3f2ee; --on-dark-2:#b3b7bb; --line-dark:#33383d;
   --accent:#e5742c;            /* 朝氣橙 S169, used sparingly */
   --sans:"Noto Sans TC","PingFang HK","Microsoft JhengHei",system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -34,7 +35,7 @@ a{color:inherit}
 [hidden]{display:none!important}
 
 /* ---------- header */
-.top{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+.top{position:sticky;top:0;z-index:30;background:var(--card);border-bottom:1px solid var(--line-2)}
 .top .wrap{height:60px;display:flex;align-items:center;gap:20px}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;flex:none}
 .logo{display:block;width:88px;height:17px;background:currentColor;-webkit-mask:url(contex.svg) left center/contain no-repeat;mask:url(contex.svg) left center/contain no-repeat}
@@ -81,13 +82,13 @@ a{color:inherit}
 .pick .row{display:grid;gap:8px}
 .meta{font:400 13px/1.5 var(--mono);color:var(--ink-2)}
 .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
-.facts{display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid var(--line);margin-top:28px}
+.facts{display:grid;grid-template-columns:repeat(2,1fr);border-top:2px solid var(--ink);margin-top:28px}
 @media (min-width:560px){.facts{grid-template-columns:repeat(4,1fr)}}
 .facts div{padding:12px 12px 0 0;border-right:1px solid var(--line)} .facts div:last-child{border-right:0}
 @media (max-width:559px){.facts div:nth-child(2n){border-right:0;padding-left:12px} .facts div:nth-child(n+3){border-top:1px solid var(--line);margin-top:12px}}
 @media (min-width:560px){.facts div+div{padding-left:12px}}
-.facts b{display:block;font:500 24px/1.2 var(--mono)}
-.facts span{font-size:13px;color:var(--muted)}
+.facts b{display:block;font:500 clamp(20px,2vw,26px)/1.2 var(--mono);color:var(--ink);white-space:nowrap}
+.facts span{font-size:13px;color:var(--ink-2)}
 .hero-fig{position:relative;order:-1}
 @media (min-width:960px){.hero-fig{order:0}}
 .hero-fig img{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;object-position:50% 62%;mix-blend-mode:multiply;transition:opacity .25s}
@@ -96,12 +97,19 @@ a{color:inherit}
 .hero-fig figcaption{position:absolute;left:0;bottom:4px;font:400 12px var(--mono);color:var(--muted)}
 
 /* ---------- sections */
-section.sec{padding:56px 0;border-top:1px solid var(--line)}
+section.sec{padding:56px 0;border-top:1px solid var(--line-2)}
 @media (min-width:768px){section.sec{padding:80px 0}}
 .head{display:grid;gap:8px;margin-bottom:28px}
 @media (min-width:960px){.head{grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:40px;align-items:end;margin-bottom:36px}}
 .head h2{font-size:clamp(26px,3.2vw,38px);line-height:1.2;font-weight:700}
+.head .label{color:var(--accent);margin-bottom:6px}
 .head p{color:var(--ink-2);max-width:36em}
+
+/* ---------- dark band */
+section.dark{background:var(--dark);color:var(--on-dark);border-top:0}
+section.dark .head p:not(.label){color:var(--on-dark-2)}
+section.dark .panel{color:var(--ink);border-color:var(--line-dark)}
+section.dark .viewer{outline:1px solid var(--line-dark)}
 
 /* ---------- configurator */
 .build{display:grid;gap:20px}
@@ -152,8 +160,8 @@ section.sec{padding:56px 0;border-top:1px solid var(--line)}
 .draw .g{stroke:var(--accent);stroke-width:3}
 .draw .k{fill:#30363a}
 .draw .m{stroke:#30363a;stroke-width:2}
-.draw .d{stroke:var(--muted);stroke-width:.8;fill:none}
-.draw text{font:500 11px var(--mono);fill:var(--ink-2)}
+.draw .d{stroke:var(--ink-2);stroke-width:.9;fill:none}
+.draw text{font:500 11px var(--mono);fill:var(--ink)}
 .spec{list-style:none;display:grid;gap:0;font-size:14px}
 .spec li{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
 .spec li span:last-child{font-family:var(--mono);text-align:right}
@@ -166,11 +174,11 @@ section.sec{padding:56px 0;border-top:1px solid var(--line)}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--card)}
 table{border-collapse:collapse;width:100%;min-width:680px;font-size:14px}
 th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-thead th{font:500 12px var(--mono);letter-spacing:.05em;color:var(--muted);text-transform:uppercase}
+thead th{font:500 12px var(--mono);letter-spacing:.05em;color:var(--on-dark);background:var(--ink);text-transform:uppercase;border-bottom:0}
 tbody td.n{font-family:var(--mono);white-space:nowrap}
-tbody tr.on{background:#fff}
+tbody tr.on{background:#fbf3ec}
 tbody tr.on td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
-tbody tr{cursor:pointer} tbody tr:hover{background:#fff}
+tbody tr{cursor:pointer} tbody tr:hover{background:#f6f4ef}
 
 /* ---------- steps + faq */
 .steps{list-style:none;display:grid;gap:0;border-top:1px solid var(--ink)}
@@ -188,16 +196,18 @@ tbody tr{cursor:pointer} tbody tr:hover{background:#fff}
 .faq details p{padding:0 0 18px;color:var(--ink-2);max-width:44em}
 
 /* ---------- footer */
-footer{border-top:1px solid var(--ink);padding:40px 0 calc(96px + env(safe-area-inset-bottom))}
+footer{background:var(--dark);color:var(--on-dark);padding:48px 0 calc(96px + env(safe-area-inset-bottom))}
 @media (min-width:960px){footer{padding-bottom:48px}}
 footer .wrap{display:grid;gap:24px}
 @media (min-width:768px){footer .wrap{grid-template-columns:2fr 1fr 1fr}}
-footer p,footer li{font-size:14px;color:var(--ink-2)}
+footer p,footer li{font-size:14px;color:var(--on-dark-2)}
+footer .label{color:var(--accent)}
+footer a{color:var(--on-dark)}
 footer ul{list-style:none;display:grid;gap:4px}
-.fine{font-size:12px;color:var(--muted);grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px}
+.fine{font-size:12px;color:var(--on-dark-2);grid-column:1/-1;border-top:1px solid var(--line-dark);padding-top:16px}
 
 /* ---------- mobile sticky CTA */
-.dock{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--card);border-top:1px solid var(--line-2);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center}
 .dock .meta{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (min-width:960px){.dock{display:none}}
 .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:14px;padding:10px 14px;border-radius:3px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:calc(100% - 32px)}
@@ -244,7 +254,7 @@ footer ul{list-style:none;display:grid;gap:4px}
   </div>
 </section>
 
-<section class="sec" id="build" aria-labelledby="h-build">
+<section class="sec dark" id="build" aria-labelledby="h-build">
   <div class="wrap">
     <div class="head"><div><p class="label">01 · 3D 配置</p><h2 id="h-build">揀好配置，<br>WhatsApp 一撳就問。</h2></div>
       <p>轉一圈睇外面，或者坐入去睇吓坐喺入面嘅感覺。揀好尺寸、顏色同加配，我哋會照住呢份配置報價。</p></div>
@@ -341,7 +351,7 @@ footer ul{list-style:none;display:grid;gap:4px}
 
 <footer>
   <div class="wrap">
-    <div><span class="logo" role="img" aria-label="Contex" style="width:110px;height:21px"></span>
+    <div><span class="logo" role="img" aria-label="Contex" style="width:110px;height:21px;color:var(--on-dark)"></span>
       <p style="margin-top:12px">Soundbox 室內靜音艙，香港由 Contex 提供。</p></div>
     <ul><li class="label">聯絡</li><li><a href="mailto:sales@contex.com.hk">sales@contex.com.hk</a></li><li><a href="tel:+85221871321">(852) 2187 1321</a></li></ul>
     <ul><li class="label">地址</li><li>荔枝角大南西街 1018 號<br>東方國際大廈 23 樓 2303 室</li></ul>
