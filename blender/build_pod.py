@@ -494,6 +494,11 @@ def trace(path, width, eps=0.2):
     return [[((x - (x0 + x1) / 2) * s, (y - (y0 + y1) / 2) * s) for x, y in lp] for lp in loops], (y1 - y0) * s
 
 LOGO_LOOPS, LOGO_H = trace(os.path.join(HERE, 'contex_logo.png'), 0.72)
+os.makedirs(os.path.join(REPO, 'v2'), exist_ok=True)   # same outline as an SVG for the web page
+with open(os.path.join(REPO, 'v2', 'contex.svg'), 'w') as fh:
+    k = 1000
+    d = ''.join('M' + 'L'.join(f'{(x + 0.36) * k:.1f},{(LOGO_H / 2 - y) * k:.1f}' for x, y in lp) + 'Z' for lp in LOGO_LOOPS)
+    fh.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {0.72 * k:.0f} {LOGO_H * k:.0f}"><path fill-rule="evenodd" fill="currentColor" d="{d}"/></svg>')
 cu = bpy.data.curves.new('ContexLogo', 'CURVE')
 cu.dimensions, cu.fill_mode, cu.extrude = '2D', 'BOTH', 0.0008
 for lp in LOGO_LOOPS:

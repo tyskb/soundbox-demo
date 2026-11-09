@@ -43,6 +43,18 @@ g.inputs['IOR'].default_value = 1.5
 t = bsdf('Trim')
 t.inputs['Roughness'].default_value, t.inputs['Metallic'].default_value = 0.6, 0.0
 
+# optional shell colour (POD_COLOUR=#3d5c49), file suffix (TAG=-green) and backdrop (BG=#f3f2ee)
+def srgb(h):
+    return np.array([int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)], np.float32)
+if os.environ.get('POD_COLOUR'):
+    c = srgb(os.environ['POD_COLOUR'])
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    bsdf('Shell').inputs['Base Color'].default_value = (*lin, 1)
+    if lin.sum() < 0.7:   # same rule as the web viewer: light logo on dark shells
+        bsdf('Logo').inputs['Base Color'].default_value = (0.88, 0.88, 0.88, 1)
+TAG = os.environ.get('TAG', '')
+BG = srgb(os.environ.get('BG', '#ffffff'))
+
 # monitor UI (illustrative), drawn here
 W_, H_ = 1024, 600
 ui = np.zeros((H_, W_, 4), np.float32); ui[..., 3] = 1
@@ -105,20 +117,20 @@ for name, (yaw, dist, hgt) in SHOTS.items():
     a = math.radians(yaw)
     cam.location = target + Vector((math.sin(a) * dist, -math.cos(a) * dist, hgt - target.z))
     cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
-    raw = os.path.join(OUT, f'_{name}_rgba.png')
+    raw = os.path.join(OUT, f'_{name}{TAG}_rgba.png')
     sc.render.filepath = raw
     bpy.ops.render.render(write_still=True)
-    # flatten onto white like the product photos
+    # flatten onto the backdrop (white, like the product photos)
     im = bpy.data.images.load(raw)
     px = np.array(im.pixels[:], np.float32).reshape(-1, 4)
     # shadow-catcher pixels (black, partial alpha) carry a ~20% haze over the whole floor;
     # keep only the contact shadow under the pod
     shadow = px[:, :3].max(1) < 0.03
     px[shadow, 3] = np.clip((px[shadow, 3] - 0.3) / 0.7, 0, 1)
-    rgb = px[:, :3] * px[:, 3:4] + (1 - px[:, 3:4])
+    rgb = px[:, :3] * px[:, 3:4] + BG * (1 - px[:, 3:4])
     out = bpy.data.images.new(name, im.size[0], im.size[1], alpha=False)
     out.pixels.foreach_set(np.concatenate([rgb, np.ones_like(px[:, :1])], 1).ravel())
-    out.filepath_raw, out.file_format = os.path.join(OUT, f'{name}.png'), 'PNG'
+    out.filepath_raw, out.file_format = os.path.join(OUT, f'{name}{TAG}.png'), 'PNG'
     out.save()
     if not os.environ.get('KEEP'):
         os.remove(raw)
