@@ -14,10 +14,12 @@ const touch = matchMedia('(pointer: coarse)').matches;
 export const modelUrl = n => new URL(n === '4' ? '../pod.glb' : `../pod-${n}.glb`, import.meta.url).href;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));   // 2x on a big sticky canvas is the main GPU cost
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;   // the scene is static: redraw shadows only when the model or door moves
+let shadowDirty = true;
 
 const scene = new THREE.Scene();
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture;
@@ -25,7 +27,7 @@ scene.environmentIntensity = 0.85;
 const key = new THREE.DirectionalLight(0xffffff, 2.0);
 key.position.set(-3.5, 6, 5);
 key.castShadow = true;
-key.shadow.mapSize.set(touch ? 1024 : 2048, touch ? 1024 : 2048);
+key.shadow.mapSize.set(1024, 1024);
 Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4.5, bottom: -2, near: 1, far: 18 });
 key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 5;
 scene.add(key, new THREE.HemisphereLight(0xffffff, 0xd9d4ca, 0.7));
@@ -140,6 +142,7 @@ function tick(now) {
     camera.fov = f.f0 + (f.f1 - f.f0) * e; camera.updateProjectionMatrix();
     if (p === 1) { flight = null; controls.enabled = !gyroOn; f.done(); }
   } else if (!gyroOn) controls.update();
+  if (shadowDirty || doorV !== doorT) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
   doorV = approach(doorV, doorT, k); lightV = approach(lightV, lightT, k);
   if (cur.door) cur.door.rotation.y = 1.15 * doorV;
   cur.led.forEach(m => { m.emissiveIntensity = 4 * lightV; m.color.copy(LED_OFF).lerp(LED_ON, lightV); });
@@ -173,7 +176,7 @@ async function show(n, animate) {
   const m = await load(n);
   if (want !== n || cur === m) return;
   if (cur) scene.remove(cur.root);
-  cur = m; scene.add(m.root);
+  cur = m; scene.add(m.root); shadowDirty = true;
   inner.position.set(0, m.info.h * 0.8, 0);
   doorV = doorT;
   frame(); outsideLimits();
@@ -182,7 +185,7 @@ async function show(n, animate) {
 function placeInside(spot) {   // jump straight to a seat (no flight): the section opens inside
   const [p, l] = cur.info.spots[spot];
   flight = null; inside = true; insideLimits();
-  doorT = doorV = 1; lightT = 1;
+  doorT = doorV = 1; lightT = 1; shadowDirty = true;
   camera.position.set(...p); camera.fov = FOV_IN; camera.updateProjectionMatrix();
   const dir = new THREE.Vector3(...l).sub(new THREE.Vector3(...p)).normalize();
   controls.target.copy(camera.position).addScaledVector(dir, 0.01); controls.enabled = true; controls.update(); wake();

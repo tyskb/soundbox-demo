@@ -93,7 +93,7 @@ a{color:inherit}
 @media (min-width:960px){.hero-fig{order:0}}
 .hero-fig img{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;object-position:50% 62%;mix-blend-mode:multiply;transition:opacity .25s}
 .hero-fig img.swap{opacity:.35}
-.hero-fig .spin{position:absolute;left:0;top:0;width:100%;aspect-ratio:4/3;mix-blend-mode:multiply;opacity:0;transition:opacity .3s;cursor:grab;touch-action:pan-y}
+.hero-fig .spin{position:absolute;left:0;top:0;width:100%;aspect-ratio:4/3;opacity:0;transition:opacity .3s;cursor:grab;touch-action:pan-y}
 .hero-fig .spin:active{cursor:grabbing}
 .hero-fig.spinning .spin{opacity:1}
 .hero-fig.spinning #heroImg{visibility:hidden}
@@ -562,7 +562,7 @@ function loadViewer() {
   });
   return loading;
 }
-new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { loadViewer(); io.disconnect(); } }, { rootMargin: '700px' }).observe(V);
+new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { loadViewer(); io.disconnect(); } }, { threshold: 0.15 }).observe(V);   // only once it's on screen, not together with the hero frames
 
 function press(btn, on) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
 var doorOpen = false, lightOn = true;
