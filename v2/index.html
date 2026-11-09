@@ -293,7 +293,7 @@ footer ul{list-style:none;display:grid;gap:4px}
           <button type="button" data-spot="seat" aria-pressed="true">坐低</button>
           <button type="button" data-spot="door" aria-pressed="false">門口</button>
           <button type="button" data-spot="out" aria-pressed="false">望出去</button>
-          <button type="button" id="vGyro" aria-pressed="false" hidden>郁手機睇</button>
+          <span class="vhint">拖動四圍望</span>
           <button type="button" class="end" id="vBack">↩ 返出去</button>
         </div>
       </div>
@@ -561,8 +561,21 @@ function setInside(on) {
   $('#barIn').hidden = !on; $('#barOut').hidden = on;
   if (on) { doorOpen = true; lightOn = true; syncToggles(); }
 }
-function goIn(spot) { loadViewer().then(function (p) { setInside(true); spotPress(spot); press($('#vGyro'), false); p.enter(spot); }); }
-function goOut() { loadViewer().then(function (p) { setInside(false); press($('#vGyro'), false); p.exit().then(function () { doorOpen = false; syncToggles(); }); }); }
+// phones: look around by moving the phone, on its own. iOS only asks for motion access inside a tap,
+// so askMotion() runs straight from the click handlers that take you inside.
+var motion = null;   // null = not asked yet, true / false = answer
+function askMotion() {
+  if (!touch || motion !== null || typeof DeviceOrientationEvent === 'undefined') return;
+  if (!DeviceOrientationEvent.requestPermission) { motion = true; return; }
+  motion = false;
+  DeviceOrientationEvent.requestPermission().then(function (r) {
+    motion = r === 'granted';
+    if (motion && window.__v2pod) { window.__v2pod.autoGyro = true; if (window.__v2pod.inside) window.__v2pod.gyro(true); }
+  }).catch(function () {});
+}
+function goIn(spot) { askMotion(); loadViewer().then(function (p) { p.autoGyro = !!motion; setInside(true); spotPress(spot); p.enter(spot); }); }
+function goOut() { loadViewer().then(function (p) { setInside(false); p.exit().then(function () { doorOpen = false; syncToggles(); }); }); }
+V.addEventListener('gyro-on', function () { if (!goIn.told) { goIn.told = true; toast('郁部手機就可以四圍望，用手指拖都得。'); } });
 V.addEventListener('viewer-ready', seatLabel);
 $('#vIn').addEventListener('click', function () { if (!window.__v2pod || !window.__v2pod.inside) goIn('seat'); });
 $('#vOut').addEventListener('click', goOut);
@@ -570,14 +583,7 @@ $('#vBack').addEventListener('click', goOut);
 $$('#barIn [data-spot]').forEach(function (b) { b.addEventListener('click', function () { goIn(b.dataset.spot); }); });
 $('#vDoor').addEventListener('click', function () { doorOpen = !doorOpen; syncToggles(); loadViewer().then(function (p) { p.setDoor(doorOpen); }); });
 $('#vLight').addEventListener('click', function () { lightOn = !lightOn; syncToggles(); loadViewer().then(function (p) { p.setLight(lightOn); }); });
-if (touch && 'DeviceOrientationEvent' in window) {
-  $('#vGyro').hidden = false;
-  $('#vGyro').addEventListener('click', function () {
-    var btn = this, on = btn.getAttribute('aria-pressed') !== 'true';
-    window.__v2pod.gyro(on).then(function (res) { press(btn, res); if (on && !res) toast('呢部機未能用陀螺儀，可以用手指拖動。'); });
-  });
-}
-$('#goInside').addEventListener('click', function () { setTimeout(function () { goIn('seat'); }, 450); });
+$('#goInside').addEventListener('click', function () { askMotion(); setTimeout(function () { goIn('seat'); }, 450); });
 
 // ---------- AR (phones only): model-viewer hands the same GLB to Scene Viewer / Quick Look at true scale
 var AR_OK = false, mv = null;

@@ -102,17 +102,29 @@ const colour = new THREE.Color(0xecebe6), colourT = colour.clone();
 const LOGO_DARK = new THREE.Color(0x262c30), LOGO_LIGHT = new THREE.Color(0xe8e8e8);
 const LED_OFF = new THREE.Color(0x3a3d45), LED_ON = new THREE.Color(0xfff2dc);
 
-// ---------- gyro look-around (phones): device orientation -> camera, relative to the pose when switched on
-let gyroOn = false, gyroBase = null;
-const devQ = new THREE.Quaternion(), tmpQ = new THREE.Quaternion(), qX = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2), eul = new THREE.Euler(), zee = new THREE.Vector3(0, 0, 1);
+// ---------- look-around by moving the phone (inside only, switched on by the page when the phone allows it)
+// camera = dragYaw * base * device; base keeps the spot's view when it starts, dragYaw lets a finger still turn the view.
+let gyroOn = false, gyroBase = null, gyroSeen = false, gyroTimer = 0, dragYaw = 0, dragX = null;
+const devQ = new THREE.Quaternion(), tmpQ = new THREE.Quaternion(), yawQ = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0),
+  qX = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2), eul = new THREE.Euler(), zee = new THREE.Vector3(0, 0, 1);
+function applyGyro() {
+  if (!gyroBase) return;
+  camera.quaternion.copy(yawQ.setFromAxisAngle(UP, dragYaw)).multiply(gyroBase).multiply(devQ); wake();
+}
 function onOrient(e) {
-  if (e.alpha == null) return;
+  if (e.alpha == null) return;          // no motion sensor: the watchdog falls back to drag
+  if (!gyroSeen) { gyroSeen = true; wrap.dispatchEvent(new Event('gyro-on')); }
   const r = THREE.MathUtils.degToRad;
   eul.set(r(e.beta), r(e.alpha), -r(e.gamma), 'YXZ');
   devQ.setFromEuler(eul).multiply(qX).multiply(tmpQ.setFromAxisAngle(zee, -r(screen.orientation ? screen.orientation.angle : 0)));
-  if (!gyroBase) gyroBase = camera.quaternion.clone().multiply(devQ.clone().invert());
-  camera.quaternion.copy(gyroBase).multiply(devQ); wake();
+  if (flight) { gyroBase = null; return; }   // let a camera flight finish, then re-anchor
+  if (!gyroBase) { gyroBase = camera.quaternion.clone().multiply(devQ.clone().invert()); dragYaw = 0; }
+  applyGyro();
 }
+canvas.addEventListener('pointerdown', e => { if (gyroOn) dragX = e.clientX; });
+canvas.addEventListener('pointermove', e => { if (gyroOn && dragX !== null) { dragYaw += (e.clientX - dragX) * 0.005; dragX = e.clientX; applyGyro(); } });
+addEventListener('pointerup', () => { dragX = null; });
+addEventListener('pointercancel', () => { dragX = null; });
 
 // ---------- loop
 let running = false, visible = true;
@@ -175,16 +187,17 @@ window.__v2pod = {
   get spots() { return cur.info.spots; },
   get inside() { return inside; },
   preload: n => load(n),
+  autoGyro: false,   // set by the page once the phone allows motion access
   async setSize(n) {
     if (cur && cur.info.size === n) return;
-    if (inside) { await this.gyro(false); inside = false; doorT = 0; }
+    if (inside) { this.gyro(false); inside = false; doorT = 0; }
     await show(n, true);
   },
   setColour(hex) { colourT.set(hex); wake(); },
   setDoor(on) { doorT = on ? 1 : 0; wake(); },
   setLight(on) { lightT = on ? 1 : 0; wake(); },
   async enter(spot = 'seat') {
-    await this.gyro(false);
+    this.gyro(false);
     if (!inside) {
       doorT = 1; lightT = 1; inside = true; insideLimits();
       await fly(doorway(), 1200, 55);
@@ -193,9 +206,10 @@ window.__v2pod = {
     await fly([p, l], 1000, FOV_IN);
     const dir = new THREE.Vector3(...l).sub(new THREE.Vector3(...p)).normalize();
     controls.target.copy(camera.position).addScaledVector(dir, 0.01); controls.update();
+    if (this.autoGyro && inside) this.gyro(true);
   },
   async exit() {
-    await this.gyro(false);
+    this.gyro(false);
     if (!inside) return;
     inside = false;
     await fly(doorway(), 900, 55);
@@ -203,17 +217,16 @@ window.__v2pod = {
     await fly(outsidePose(), 1100, FOV_OUT);
     doorT = 0; wake();
   },
-  async gyro(on) {
+  gyro(on) {   // permission is the page's job (it needs the user's tap)
     if (on === gyroOn) return gyroOn;
+    clearTimeout(gyroTimer);
     if (on) {
       if (typeof DeviceOrientationEvent === 'undefined') return false;
-      if (DeviceOrientationEvent.requestPermission) {
-        try { if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false; } catch (e) { return false; }
-      }
-      gyroBase = null; gyroOn = true; controls.enabled = false;
+      gyroBase = null; gyroSeen = false; dragYaw = 0; gyroOn = true; controls.enabled = false;
       addEventListener('deviceorientation', onOrient);
+      gyroTimer = setTimeout(() => { if (gyroOn && !gyroSeen) this.gyro(false); }, 1500);   // no sensor data: back to drag
     } else {
-      gyroOn = false; removeEventListener('deviceorientation', onOrient);
+      gyroOn = false; dragX = null; removeEventListener('deviceorientation', onOrient);
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       controls.target.copy(camera.position).addScaledVector(dir, inside ? 0.01 : camera.position.distanceTo(LOOK));
       controls.enabled = true; controls.update();
