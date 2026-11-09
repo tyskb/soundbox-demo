@@ -179,8 +179,17 @@ async function show(n, animate) {
   frame(); outsideLimits();
   if (animate) fly(outsidePose(), 900, FOV_OUT); else jump(outsidePose(), FOV_OUT);   // resolve once the model is in
 }
+function placeInside(spot) {   // jump straight to a seat (no flight): the section opens inside
+  const [p, l] = cur.info.spots[spot];
+  flight = null; inside = true; insideLimits();
+  doorT = doorV = 1; lightT = 1;
+  camera.position.set(...p); camera.fov = FOV_IN; camera.updateProjectionMatrix();
+  const dir = new THREE.Vector3(...l).sub(new THREE.Vector3(...p)).normalize();
+  controls.target.copy(camera.position).addScaledVector(dir, 0.01); controls.enabled = true; controls.update(); wake();
+}
 await show(wrap.dataset.size || '4', false);
 fit();
+if (wrap.dataset.start === 'inside') placeInside('seat');
 
 window.__v2pod = {
   get size() { return cur.info.size; },
@@ -188,10 +197,11 @@ window.__v2pod = {
   get inside() { return inside; },
   preload: n => load(n),
   autoGyro: false,   // set by the page once the phone allows motion access
-  async setSize(n) {
+  async setSize(n, stayInside) {
     if (cur && cur.info.size === n) return;
     if (inside) { this.gyro(false); inside = false; doorT = 0; }
-    await show(n, true);
+    await show(n, !stayInside);
+    if (stayInside && cur.info.size === n) { placeInside('seat'); if (this.autoGyro) this.gyro(true); }
   },
   setColour(hex) { colourT.set(hex); wake(); },
   setDoor(on) { doorT = on ? 1 : 0; wake(); },

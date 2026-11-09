@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="preload" as="image" href="img/pod4-white.jpg">
+<link rel="preload" as="image" href="spin/4/00.jpg">
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
@@ -93,6 +93,14 @@ a{color:inherit}
 @media (min-width:960px){.hero-fig{order:0}}
 .hero-fig img{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;object-position:50% 62%;mix-blend-mode:multiply;transition:opacity .25s}
 .hero-fig img.swap{opacity:.35}
+.hero-fig .spin{position:absolute;left:0;top:0;width:100%;aspect-ratio:4/3;mix-blend-mode:multiply;opacity:0;transition:opacity .3s;cursor:grab;touch-action:pan-y}
+.hero-fig .spin:active{cursor:grabbing}
+.hero-fig.spinning .spin{opacity:1}
+.hero-fig.spinning #heroImg{visibility:hidden}
+.spin-hint{position:absolute;left:50%;top:6%;transform:translateX(-50%);font:500 13px var(--mono);color:var(--ink);background:var(--card);border:1px solid var(--line-2);padding:7px 12px;border-radius:3px;pointer-events:none;opacity:0;transition:opacity .4s;white-space:nowrap}
+.hero-fig.spinning .spin-hint{opacity:1}
+.hero-fig.touched .spin-hint{opacity:0}
+@media (max-width:640px){.spin-hint{display:none}}   /* the caption says it; the chip would cover tall pods */
 .hero-fig figcaption{position:absolute;left:0;bottom:4px;font:400 12px var(--mono);color:var(--muted)}
 
 /* ---------- sections */
@@ -118,7 +126,7 @@ section.dark .viewer{outline:1px solid var(--line-dark)}
 @media (min-width:1024px){.viewer{position:sticky;top:76px;aspect-ratio:auto;height:calc(100vh - 100px);max-height:760px}}
 .viewer canvas{display:block;width:100%;height:100%;opacity:0;transition:opacity .4s}
 .viewer.ready canvas{opacity:1}
-.viewer .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply;transition:opacity .4s}
+.viewer .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .4s}
 .viewer.ready .poster,.viewer.ready .vload{opacity:0;pointer-events:none}
 .viewer.ready.busy .vload{opacity:1}
 .vload{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:500 13px var(--mono);color:var(--ink-2);background:var(--card);padding:6px 10px;border-radius:3px;transition:opacity .4s}
@@ -260,7 +268,8 @@ footer ul{list-style:none;display:grid;gap:4px}
       </div>
     </div>
     <figure class="hero-fig">
-      <img id="heroImg" src="img/pod4-white.jpg" width="1200" height="900" alt="Soundbox 4人靜音艙，霧面白，側面有 Contex 標誌">
+      <img id="heroImg" src="spin/4/00.jpg" width="1000" height="750" alt="Soundbox 4人靜音艙，霧面白，側面有 Contex 標誌">
+      <span class="spin-hint" aria-hidden="true">⟷ 拖動睇 360°</span>
       <figcaption id="heroCap"></figcaption>
     </figure>
   </div>
@@ -269,10 +278,10 @@ footer ul{list-style:none;display:grid;gap:4px}
 <section class="sec dark" id="build" aria-labelledby="h-build">
   <div class="wrap">
     <div class="head"><div><p class="label">01 · 3D 配置</p><h2 id="h-build">揀好配置，<br>WhatsApp 一撳就問。</h2></div>
-      <p>「外觀」可以轉一圈睇；「入內睇」會帶你行入去坐低。揀好尺寸、顏色同加配，我哋會照住呢份配置報價。</p></div>
+      <p>你已經坐咗喺入面：拖動四圍望，或者揀「門口」「望出去」。想睇外面就撳「外觀」。揀好尺寸、顏色同加配，我哋會照住呢份配置報價。</p></div>
     <div class="build">
-      <div class="viewer" id="viewer" data-size="4">
-        <img class="poster" id="vPoster" src="img/pod4-white.jpg" alt="" aria-hidden="true">
+      <div class="viewer" id="viewer" data-size="4" data-start="inside">
+        <img class="poster" id="vPoster" src="img/inside4.jpg" alt="" aria-hidden="true">
         <canvas role="img" aria-label="Soundbox 3D 模型，可以拖動旋轉"></canvas>
         <p class="vload" id="vload">載入 3D 模型…</p>
         <div class="vtop">
@@ -388,6 +397,7 @@ footer ul{list-style:none;display:grid;gap:4px}
 <div class="dock" aria-label="查詢"><span class="meta" data-short></span><a class="btn" href="#" data-wa>WhatsApp 報價</a></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="spin.js"></script>
 <script>
 (function () {
 'use strict';
@@ -503,14 +513,16 @@ function render() {
   var href = 'https://wa.me/' + WA + '?text=' + encodeURIComponent(msg);
   $$('[data-wa]').forEach(function (a) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; });
   // hero image: our renders for the modelled 4-person pod, Contex's photos for the rest
-  var src = 'img/pod' + s.id + '-' + c.id + '.jpg';   // Blender renders, one per size x colour
+  // 360 turntable when WebGL is there (frame 0 underneath as the first paint), else the per-colour stills
+  var src = spin ? 'spin/' + s.id + '/00.jpg' : 'img/pod' + s.id + '-' + c.id + '.jpg';
   if (src !== lastHero) {
     var img = $('#heroImg'); img.classList.add('swap');
     var pre = new Image(); pre.onload = pre.onerror = function () { img.src = src; img.classList.remove('swap'); }; pre.src = src;
     img.alt = 'Soundbox ' + s.name + '，' + c.name;
     lastHero = src;
   }
-  $('#heroCap').textContent = s.name + ' · ' + c.name + ' ' + c.code + ' · 3D 渲染';
+  $('#heroCap').textContent = s.name + ' · ' + c.name + ' ' + c.code + (spin ? ' · 拖動睇 360°' : ' · 3D 渲染');
+  if (spin) { spin.setSize(s.id); spin.setColour(c.hex); }
   $('#spec').innerHTML = [['外尺寸', dims(s)], ['內尺寸', 'W' + s.iw + ' × D' + s.id_ + ' × H' + s.ih + ' cm'], ['重量', s.kg + ' kg（淨 ' + s.net + ' kg）'],
     ['電源', '一個插位 · 100–240V'], ['底部空隙', '8 mm · 阻尼腳墊'], ['安裝', '專人上門 · 一日內']]
     .map(function (r) { return '<li><span>' + r[0] + '</span><span>' + r[1] + '</span></li>'; }).join('');
@@ -520,16 +532,17 @@ function render() {
   }).join('');
   $('#arBtn').textContent = touch ? '開 AR' : '用手機開 AR';
   $('#vBadge').textContent = '3D · ' + s.name;
-  if (!window.__v2pod) { V.dataset.size = s.id; $('#vPoster').src = 'img/pod' + s.id + '-white.jpg'; }
+  if (!window.__v2pod) { V.dataset.size = s.id; $('#vPoster').src = 'img/inside' + s.id + '.jpg'; }
   if (mv && mv.getAttribute('src') !== glb(s.id)) mv.setAttribute('src', glb(s.id));
   history.replaceState(null, '', '?size=' + s.id + '&colour=' + c.id + location.hash);
   drawings(s);
   if (window.__v2pod) {
     window.__v2pod.setColour(c.hex);
     if (window.__v2pod.size !== s.id) {
-      setInside(false); doorOpen = false; syncToggles();
+      var stay = window.__v2pod.inside;          // inside stays inside (at the new size's seat)
+      setInside(stay); if (stay) spotPress('seat'); else { doorOpen = false; syncToggles(); }
       $('#vload').textContent = '載入緊' + s.name + '…'; V.classList.add('busy');
-      window.__v2pod.setSize(s.id).then(function () { seatLabel(); if (window.__v2pod.size === S.size.id) V.classList.remove('busy'); });
+      window.__v2pod.setSize(s.id, stay).then(function () { seatLabel(); if (window.__v2pod.size === S.size.id) V.classList.remove('busy'); });
     }
   }
 }
@@ -576,7 +589,15 @@ function askMotion() {
 function goIn(spot) { askMotion(); loadViewer().then(function (p) { p.autoGyro = !!motion; setInside(true); spotPress(spot); p.enter(spot); }); }
 function goOut() { loadViewer().then(function (p) { setInside(false); p.exit().then(function () { doorOpen = false; syncToggles(); }); }); }
 V.addEventListener('gyro-on', function () { if (!goIn.told) { goIn.told = true; toast('郁部手機就可以四圍望，用手指拖都得。'); } });
-V.addEventListener('viewer-ready', seatLabel);
+V.addEventListener('viewer-ready', function () {
+  seatLabel();
+  if (window.__v2pod.inside) { setInside(true); spotPress('seat'); }
+});
+V.addEventListener('pointerdown', function () {
+  askMotion();
+  var p = window.__v2pod;
+  if (motion && p && p.inside && !p.autoGyro) { p.autoGyro = true; p.gyro(true); }
+});
 $('#vIn').addEventListener('click', function () { if (!window.__v2pod || !window.__v2pod.inside) goIn('seat'); });
 $('#vOut').addEventListener('click', goOut);
 $('#vBack').addEventListener('click', goOut);
@@ -628,9 +649,10 @@ $('#qrDlg').addEventListener('click', function (e) { if (e.target === this) this
   if (q.get('ar') === '1' && touch) setTimeout(function () { $('#fit').scrollIntoView({ behavior: 'smooth' }); }, 300);
 })();
 
+var spin = window.Spin && webgl() ? window.Spin($('.hero-fig'), 'spin/') : null;
 render();
 // warm the other colour renders once the page is idle
-(window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
+if (!spin) (window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
 })();
 </script>
 </body>

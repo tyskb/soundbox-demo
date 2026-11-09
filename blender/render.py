@@ -82,7 +82,8 @@ wn.inputs['Color'].default_value = (1, 1, 1, 1)
 wn.inputs['Strength'].default_value = 0.25   # low, so glass and black trim stay clean
 
 bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, 0))
-bpy.context.object.is_shadow_catcher = True
+catcher = bpy.context.object
+catcher.is_shadow_catcher = True
 
 LIGHT = float(os.environ.get('LIGHT', 0.18))   # overall studio brightness
 
@@ -115,6 +116,66 @@ SHOTS = {   # name: (yaw from the front, deg; +ve = towards the right/Contex sid
     'side_logo': (58, 8.2, 1.6),
 }
 only = os.environ.get('SHOT')
+
+def flatten(raw, path, bg, fix_shadow=True):
+    """RGBA render -> opaque PNG on a flat backdrop (white like the product photos, black for masks)."""
+    im = bpy.data.images.load(raw)
+    px = np.array(im.pixels[:], np.float32).reshape(-1, 4)
+    if fix_shadow:   # shadow-catcher pixels carry a ~20% haze over the whole floor; keep only the contact shadow
+        shadow = px[:, :3].max(1) < 0.03
+        px[shadow, 3] = np.clip((px[shadow, 3] - 0.3) / 0.7, 0, 1)
+    rgb = px[:, :3] * px[:, 3:4] + bg * (1 - px[:, 3:4])
+    out = bpy.data.images.new('flat', im.size[0], im.size[1], alpha=False)
+    out.pixels.foreach_set(np.concatenate([rgb, np.ones_like(px[:, :1])], 1).ravel())
+    out.filepath_raw, out.file_format = path, 'PNG'
+    out.save()
+    bpy.data.images.remove(im); bpy.data.images.remove(out)
+    os.remove(raw)
+
+if only == 'spin':
+    # 360 turntable for the web hero: the pod turns under fixed studio lights, camera at the hero angle.
+    # Then a mask pass (shell = red, logo = green) so the page can recolour the shell itself.
+    F = int(os.environ.get('FRAMES', 36))
+    sdir = os.path.join(OUT, 'spin', POD['size'])
+    os.makedirs(sdir, exist_ok=True)
+    sw = int(os.environ.get('SPIN_W', 1000))
+    sc.render.resolution_x, sc.render.resolution_y = sw, sw * 3 // 4
+    root = bpy.data.objects['Soundbox4']
+    inside.parent = root                                                   # ceiling light turns with the pod
+    a = math.radians(28)
+    k = max(3.6 * PH, 2.3 * math.hypot(PW, PD)) / 8.4                      # fits the widest angle too
+    target = Vector((0.0, 0.0, 0.49 * PH))
+    cam.location = target + Vector((math.sin(a) * 8.4 * k, -math.cos(a) * 8.4 * k, 0.42 * k))
+    cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    frames = [int(x) for x in os.environ['ONLY_FRAMES'].split(',')] if os.environ.get('ONLY_FRAMES') else range(F)
+    for i in frames:
+        root.rotation_euler.z = 2 * math.pi * i / F                       # +index = turns anticlockwise from above
+        sc.render.filepath = raw = os.path.join(sdir, f'_{i:02d}.png')
+        bpy.ops.render.render(write_still=True)
+        flatten(raw, os.path.join(sdir, f'{i:02d}.png'), BG)
+    for m in bpy.data.materials:                                           # mask pass
+        if not m.node_tree:
+            continue
+        nt = m.node_tree; nt.nodes.clear()
+        o = nt.nodes.new('ShaderNodeOutputMaterial')
+        if m.name == 'Glass':
+            sh = nt.nodes.new('ShaderNodeBsdfTransparent')
+        else:
+            sh = nt.nodes.new('ShaderNodeEmission')
+            sh.inputs['Color'].default_value = {'Shell': (1, 0, 0, 1), 'Logo': (0, 1, 0, 1)}.get(m.name, (0, 0, 0, 1))
+        nt.links.new(sh.outputs[0], o.inputs[0])
+    catcher.hide_render = True
+    wn.inputs['Strength'].default_value = 0
+    sc.cycles.samples, sc.cycles.use_denoising = 16, False
+    sc.view_settings.exposure = 0
+    for i in frames:
+        root.rotation_euler.z = 2 * math.pi * i / F
+        sc.render.filepath = raw = os.path.join(sdir, f'_m{i:02d}.png')
+        bpy.ops.render.render(write_still=True)
+        flatten(raw, os.path.join(sdir, f'm{i:02d}.png'), np.zeros(3, np.float32), fix_shadow=False)
+    print('rendered spin', POD['size'], len(frames))
+    raise SystemExit
+
 if only == 'inside':   # the web viewer's 'sit down' spot (three.js x, y-up, z=-Blender y), wide lens
     (px, py, pz), (lx, ly, lz) = POD['spots']['seat']
     cam.location = Vector((px, -pz, py))
