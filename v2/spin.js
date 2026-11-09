@@ -2,9 +2,10 @@
 // Drag / swipe sideways to turn (vertical swipes still scroll), arrow keys step.
 // Each frame has a mask (red = shell, green = logo), so the shell colour is applied here on the GPU
 // instead of rendering 36 frames x 5 colours.
-// Speed: frames are decoded off the main thread (createImageBitmap), uploaded to the GPU once at canvas
-// size, and turning only swaps textures; draws are coalesced to one per animation frame; the page
-// background is multiplied in the shader (no CSS blend mode for Chrome to recomposite).
+// Smoothness: the view glides after the finger and cross-fades between neighbouring frames, so turning is
+// continuous rather than 10° jumps. Frames are decoded off the main thread (createImageBitmap) and
+// uploaded to the GPU at most one per animation frame; turning then only swaps textures. The page colour
+// is multiplied in the shader (no CSS blend mode for Chrome to recomposite).
 (function () {
   'use strict';
   var F = 36;
@@ -13,13 +14,16 @@
   var VS = 'attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x*.5+.5,.5-p.y*.5);gl_Position=vec4(p,0.,1.);}';
   var FS = [
     'precision mediump float;',
-    'uniform sampler2D uImg,uMask;uniform vec3 uRatio,uBg;uniform float uLogo;varying vec2 v;',
+    'uniform sampler2D uA,uMA,uB,uMB;uniform vec3 uRatio,uBg;uniform float uLogo,uT;varying vec2 v;',
+    'vec3 shade(sampler2D img,sampler2D msk){',
+    '  vec3 b=pow(texture2D(img,v).rgb,vec3(2.2));',              // to linear
+    '  vec3 m=texture2D(msk,v).rgb;',
+    '  vec3 o=mix(b,b*(uRatio*.955+.045),m.r);',                    // shell: albedo swap, keep a little clear-coat sheen
+    '  return mix(o,vec3(.62),m.g*uLogo);',                         // light logo on dark shells
+    '}',
     'void main(){',
-    '  vec3 b=pow(texture2D(uImg,v).rgb,vec3(2.2));',            // to linear
-    '  vec3 m=texture2D(uMask,v).rgb;',
-    '  vec3 o=mix(b,b*(uRatio*.955+.045),m.r);',                  // shell: albedo swap, keep a little clear-coat sheen
-    '  o=mix(o,vec3(.62),m.g*uLogo);',                            // light logo on dark shells
-    '  gl_FragColor=vec4(pow(o,vec3(1./2.2))*uBg,1.);',           // white studio backdrop -> page colour
+    '  vec3 o=mix(shade(uA,uMA),shade(uB,uMB),uT);',                // blend neighbouring frames
+    '  gl_FragColor=vec4(pow(o,vec3(1./2.2))*uBg,1.);',             // white studio backdrop -> page colour
     '}'].join('\n');
 
   function srgb(h) { return [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16) / 255; }); }
@@ -32,8 +36,10 @@
     canvas.tabIndex = 0;
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', '360° 檢視：拖動或者用左右鍵轉');
-    var gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false });
-    if (!gl) return null;
+    var gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, failIfMajorPerformanceCaveat: true });
+    if (!gl) return null;   // no GPU (software WebGL would stutter): the page keeps the still images
+    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    if (dbg && /swiftshader|llvmpipe|software|basic render/i.test(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))) return null;
     var prog = gl.createProgram();
     [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, FS]].forEach(function (s) {
       var sh = gl.createShader(s[0]); gl.shaderSource(sh, s[1]); gl.compileShader(sh); gl.attachShader(prog, sh);
@@ -45,9 +51,8 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     var loc = gl.getAttribLocation(prog, 'p');
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    gl.uniform1i(gl.getUniformLocation(prog, 'uImg'), 0);
-    gl.uniform1i(gl.getUniformLocation(prog, 'uMask'), 1);
-    var uRatio = gl.getUniformLocation(prog, 'uRatio'), uLogo = gl.getUniformLocation(prog, 'uLogo');
+    ['uA', 'uMA', 'uB', 'uMB'].forEach(function (n, u) { gl.uniform1i(gl.getUniformLocation(prog, n), u); });
+    var uRatio = gl.getUniformLocation(prog, 'uRatio'), uLogo = gl.getUniformLocation(prog, 'uLogo'), uT = gl.getUniformLocation(prog, 'uT');
     var bg = srgb(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#eeece6');
     gl.uniform3f(gl.getUniformLocation(prog, 'uBg'), bg[0], bg[1], bg[2]);
 
@@ -61,15 +66,29 @@
     function bitmap(img, w) {   // decode (and shrink to what the canvas needs) off the main thread
       if (!window.createImageBitmap) return Promise.resolve(img);
       var h = Math.round(w * img.naturalHeight / img.naturalWidth);
-      return createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' })
+      return createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' })
         .catch(function () { return createImageBitmap(img); }).catch(function () { return img; });
     }
     var dpr = Math.min(devicePixelRatio || 1, 2);
     var texW = function () { return Math.max(480, Math.min(1000, Math.round((canvas.clientWidth || 600) * dpr))); };
 
-    var size = null, sets = {}, idx = 0, colour = WHITE, logo = 0, touched = false, onReady = null, ready = false, raf = 0;
+    var size = null, sets = {}, colour = WHITE, logo = 0, touched = false, ready = false;
+    var pos = 0, target = 0, loop = 0, dirty = true;   // pos/target: fractional frame index, unbounded
     var pad = function (i) { return (i < 10 ? '0' : '') + i; };
+    var wrap = function (i) { return ((i % F) + F) % F; };
 
+    // ---- loading: images -> bitmaps (off-thread) -> one GPU upload per animation frame
+    var uploads = [], pumping = 0;
+    function pump() {
+      pumping = 0;
+      var u = uploads.shift(); if (!u) return;
+      if (!u.set.dead) {
+        u.set.tex[u.i] = texture(u.bm[0]); u.set.mask[u.i] = texture(u.bm[1]);
+        if (u.n === size) { if (!ready && u.i === 0) first(); else dirty = true; go(); }
+      }
+      u.bm.forEach(function (b) { if (b && b.close) b.close(); });
+      if (uploads.length) pumping = requestAnimationFrame(pump);
+    }
     function load(n) {   // frame 0 first, then outwards both ways, a few at a time
       var set = sets[n] = { tex: [], mask: [], dead: false };
       var order = [0]; for (var k = 1; k <= F / 2; k++) { order.push(k % F); if (k !== F / 2) order.push((F - k) % F); }
@@ -81,11 +100,8 @@
           if (--left) return;
           var w = texW();
           Promise.all([bitmap(a, w), bitmap(m, Math.round(w / 2))]).then(function (bm) {
-            if (!set.dead) {
-              set.tex[i] = texture(bm[0]); set.mask[i] = texture(bm[1]);
-              if (n === size) { if (!ready && i === 0) first(); else if (i === idx || set.tex[idx] === undefined) schedule(); }
-            }
-            bm.forEach(function (b) { if (b && b.close) b.close(); });
+            uploads.push({ set: set, n: n, i: i, bm: bm });
+            if (!pumping) pumping = requestAnimationFrame(pump);
             one();
           });
         };
@@ -101,76 +117,89 @@
       set.tex.concat(set.mask).forEach(function (t) { if (t) gl.deleteTexture(t); });
       delete sets[n];
     }
-    function first() { ready = true; resize(); fig.classList.add('spinning'); if (onReady) onReady(); nudge(); }
+    function first() { ready = true; resize(); fig.classList.add('spinning'); setTimeout(nudge, 900); }
 
     function nearest(set, i) {   // closest frame already on the GPU
       for (var d = 0; d <= F / 2; d++) {
-        var a = (i + d) % F, b = (i - d + F) % F;
+        var a = wrap(i + d), b = wrap(i - d);
         if (set.tex[a]) return a; if (set.tex[b]) return b;
       }
       return -1;
     }
     function draw() {
-      raf = 0;
       var set = sets[size]; if (!set || !ready) return;
-      var i = nearest(set, idx); if (i < 0) return;
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, set.tex[i]);
-      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, set.mask[i]);
+      var f = Math.floor(pos), t = pos - f, a = wrap(f), b = wrap(f + 1);
+      if (!set.tex[a] || !set.tex[b]) { a = b = nearest(set, Math.round(pos)); t = 0; }   // still loading
+      if (a < 0) return;
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, set.tex[a]);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, set.mask[a]);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, set.tex[b]);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, set.mask[b]);
       gl.uniform3f(uRatio, colour[0], colour[1], colour[2]);
       gl.uniform1f(uLogo, logo);
+      gl.uniform1f(uT, t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
-    function schedule() { if (!raf) raf = requestAnimationFrame(draw); }
+    var last = 0;
+    function tick(now) {   // glide pos toward target; draw only when something changed
+      loop = 0;
+      var dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+      var d = target - pos;
+      if (Math.abs(d) > 0.002) { pos += d * (reduce ? 1 : 1 - Math.exp(-dt * 18)); dirty = true; } else if (pos !== target) { pos = target; dirty = true; }
+      if (dirty) { dirty = false; draw(); }
+      if (pos !== target || coasting) loop = requestAnimationFrame(tick); else last = 0;
+    }
+    function go() { if (!loop) loop = requestAnimationFrame(tick); }
     function resize() {
       var w = Math.round(canvas.clientWidth * dpr);
       if (!w) return;
-      canvas.width = Math.min(w, 1000); canvas.height = Math.round(canvas.width * 0.75);
-      gl.viewport(0, 0, canvas.width, canvas.height); draw();
+      var cw = Math.min(w, 1000);
+      if (cw !== canvas.width) { canvas.width = cw; canvas.height = Math.round(cw * 0.75); gl.viewport(0, 0, canvas.width, canvas.height); }
+      dirty = true; go();
     }
     new ResizeObserver(resize).observe(canvas);
 
     // ---- turning
-    var x0 = null, i0 = 0, vel = 0, lastX = 0, lastT = 0, spinRaf = 0;
+    var x0 = null, t0 = 0, vel = 0, lastX = 0, lastT = 0, coasting = false;
     var step = function () { return Math.max(6, canvas.clientWidth / 40); };   // px per frame
-    function set(i) { var n = ((Math.round(i) % F) + F) % F; if (n !== idx) { idx = n; schedule(); } }
-    function interact() { if (!touched) { touched = true; fig.classList.add('touched'); } cancelAnimationFrame(spinRaf); }
+    function interact() { if (!touched) { touched = true; fig.classList.add('touched'); } coasting = false; }
     canvas.addEventListener('pointerdown', function (e) {
-      interact(); x0 = lastX = e.clientX; lastT = performance.now(); i0 = idx; vel = 0;
+      interact(); x0 = lastX = e.clientX; lastT = performance.now(); t0 = target; vel = 0;
       try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
     });
     canvas.addEventListener('pointermove', function (e) {
       if (x0 === null) return;
       var now = performance.now();
       vel = (e.clientX - lastX) / Math.max(1, now - lastT); lastX = e.clientX; lastT = now;
-      set(i0 + (e.clientX - x0) / step());           // drag right = the front swings right
+      target = t0 + (e.clientX - x0) / step();         // drag right = the front swings right
+      go();
     });
     function release() {
       if (x0 === null) return; x0 = null;
-      if (reduce || Math.abs(vel) < 0.15) return;
-      var f = idx, v = vel * 16 / step();            // frames per animation frame
-      (function coast() { v *= 0.92; f += v; set(f); if (Math.abs(v) > 0.05) spinRaf = requestAnimationFrame(coast); })();
+      if (reduce || Math.abs(vel) < 0.15) { target = Math.round(target); go(); return; }   // settle on a real frame
+      var v = vel * 16 / step(); coasting = true;
+      (function coast() {
+        if (!coasting) return;
+        v *= 0.93; target += v;
+        if (Math.abs(v) > 0.03) requestAnimationFrame(coast); else { coasting = false; target = Math.round(target); }
+        go();
+      })();
     }
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
     canvas.addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { interact(); set(idx + (e.key === 'ArrowRight' ? 1 : -1)); e.preventDefault(); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { interact(); target = Math.round(target) + (e.key === 'ArrowRight' ? 1 : -1); go(); e.preventDefault(); }
     });
     function nudge() {   // one small swing so people see it turns
       if (reduce || touched) return;
-      var t0 = performance.now();
-      (function go(t) {
-        if (touched) return;
-        var k = Math.min(1, (t - t0) / 1600);
-        set(Math.sin(k * Math.PI) * 4);
-        if (k < 1) spinRaf = requestAnimationFrame(go);
-      })(t0);
+      target = 3; go();
+      setTimeout(function () { if (!touched) { target = 0; go(); } }, 700);
     }
 
     fig.appendChild(canvas);
     return {
-      setSize: function (n) { if (n === size) return; if (size) drop(size); size = n; idx = 0; load(n); },
-      setColour: function (hex) { var c = lin(hex); colour = [c[0] / WHITE[0], c[1] / WHITE[1], c[2] / WHITE[2]]; logo = c[0] + c[1] + c[2] < 0.7 ? 1 : 0; schedule(); },
-      onReady: function (fn) { onReady = fn; if (ready) fn(); }
+      setSize: function (n) { if (n === size) return; if (size) drop(size); size = n; pos = target = Math.round(target); load(n); },
+      setColour: function (hex) { var c = lin(hex); colour = [c[0] / WHITE[0], c[1] / WHITE[1], c[2] / WHITE[2]]; logo = c[0] + c[1] + c[2] < 0.7 ? 1 : 0; dirty = true; go(); }
     };
   }
   window.Spin = Spin;
