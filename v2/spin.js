@@ -84,17 +84,27 @@
       var u = uploads.shift(); if (!u) return;
       if (!u.set.dead) {
         u.set.tex[u.i] = texture(u.bm[0]); u.set.mask[u.i] = texture(u.bm[1]);
+        if (++u.set.count === F && !nudged) { nudged = true; setTimeout(nudge, 400); }
         if (u.n === size) { if (!ready && u.i === 0) first(); else dirty = true; go(); }
       }
       u.bm.forEach(function (b) { if (b && b.close) b.close(); });
       if (uploads.length) pumping = requestAnimationFrame(pump);
     }
-    function load(n) {   // frame 0 first, then outwards both ways, a few at a time
-      var set = sets[n] = { tex: [], mask: [], dead: false };
+    // First paint needs frame 0 only. The other 35 wait until the page is idle (or the moment someone drags),
+    // so the first seconds aren't spent decoding 70 images next to the page and its fonts.
+    var idleGate = new Promise(function (go) {
+      var later = function () { setTimeout(function () { (window.requestIdleCallback || setTimeout)(go, { timeout: 2500 }); }, 1200); };
+      if (document.readyState === 'complete') later(); else addEventListener('load', later, { once: true });
+      canvas.addEventListener('pointerdown', go, { once: true });
+      canvas.addEventListener('keydown', go, { once: true });
+    });
+    function load(n) {   // frame 0 first, then outwards both ways, two at a time
+      var set = sets[n] = { tex: [], mask: [], dead: false, count: 0 };
       var order = [0]; for (var k = 1; k <= F / 2; k++) { order.push(k % F); if (k !== F / 2) order.push((F - k) % F); }
       var next = 0;
       function one() {
         if (set.dead || next >= order.length) return;
+        if (next === 1 && !set.released) { set.released = true; idleGate.then(function () { one(); one(); }); return; }
         var i = order[next++], left = 2, a = new Image(), m = new Image();
         var done = function () {
           if (--left) return;
@@ -109,7 +119,7 @@
         a.onerror = m.onerror = function () { one(); };
         a.src = base + n + '/' + pad(i) + '.jpg'; m.src = base + n + '/m' + pad(i) + '.png';
       }
-      one(); one(); one();
+      one();
     }
     function drop(n) {   // free the GPU memory of a size we left
       var set = sets[n]; if (!set) return;
@@ -117,7 +127,8 @@
       set.tex.concat(set.mask).forEach(function (t) { if (t) gl.deleteTexture(t); });
       delete sets[n];
     }
-    function first() { ready = true; resize(); fig.classList.add('spinning'); setTimeout(nudge, 900); }
+    var nudged = false;
+    function first() { ready = true; resize(); fig.classList.add('spinning'); }
 
     function nearest(set, i) {   // closest frame already on the GPU
       for (var d = 0; d <= F / 2; d++) {

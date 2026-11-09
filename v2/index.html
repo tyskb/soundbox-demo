@@ -514,14 +514,14 @@ function render() {
   $$('[data-wa]').forEach(function (a) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; });
   // hero image: our renders for the modelled 4-person pod, Contex's photos for the rest
   // 360 turntable when WebGL is there (frame 0 underneath as the first paint), else the per-colour stills
-  var src = spin ? 'spin/' + s.id + '/00.jpg' : 'img/pod' + s.id + '-' + c.id + '.jpg';
+  var src = canSpin ? 'spin/' + s.id + '/00.jpg' : 'img/pod' + s.id + '-' + c.id + '.jpg';
   if (src !== lastHero) {
     var img = $('#heroImg'); img.classList.add('swap');
     var pre = new Image(); pre.onload = pre.onerror = function () { img.src = src; img.classList.remove('swap'); }; pre.src = src;
     img.alt = 'Soundbox ' + s.name + '，' + c.name;
     lastHero = src;
   }
-  $('#heroCap').textContent = s.name + ' · ' + c.name + ' ' + c.code + (spin ? ' · 拖動睇 360°' : ' · 3D 渲染');
+  $('#heroCap').textContent = s.name + ' · ' + c.name + ' ' + c.code + (canSpin ? ' · 拖動睇 360°' : ' · 3D 渲染');
   if (spin) { spin.setSize(s.id); spin.setColour(c.hex); }
   $('#spec').innerHTML = [['外尺寸', dims(s)], ['內尺寸', 'W' + s.iw + ' × D' + s.id_ + ' × H' + s.ih + ' cm'], ['重量', s.kg + ' kg（淨 ' + s.net + ' kg）'],
     ['電源', '一個插位 · 100–240V'], ['底部空隙', '8 mm · 阻尼腳墊'], ['安裝', '專人上門 · 一日內']]
@@ -562,7 +562,13 @@ function loadViewer() {
   });
   return loading;
 }
-new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { loadViewer(); io.disconnect(); } }, { threshold: 0.15 }).observe(V);   // only once it's on screen, not together with the hero frames
+function watchViewer() {   // once it's on screen, and only when the browser is idle (taps load it at once).
+  // Starts after 'load': before the web font arrives the hero is shorter and the viewer would look on screen.
+  new IntersectionObserver(function (es, io) {
+    if (es[0].isIntersecting) { (window.requestIdleCallback || setTimeout)(loadViewer, { timeout: 1500 }); io.disconnect(); }
+  }, { threshold: 0.15 }).observe(V);
+}
+if (document.readyState === 'complete') watchViewer(); else addEventListener('load', watchViewer, { once: true });
 
 function press(btn, on) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
 var doorOpen = false, lightOn = true;
@@ -649,10 +655,17 @@ $('#qrDlg').addEventListener('click', function (e) { if (e.target === this) this
   if (q.get('ar') === '1' && touch) setTimeout(function () { $('#fit').scrollIntoView({ behavior: 'smooth' }); }, 300);
 })();
 
-var spin = window.Spin && webgl() ? window.Spin($('.hero-fig'), 'spin/') : null;
+var spin = null, canSpin = !!(window.Spin && window.WebGLRenderingContext);
 render();
-// warm the other colour renders once the page is idle
-if (!spin) (window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
+// WebGL setup (~50-90 ms) waits until after the first paint; frame 0 is already showing as an <img>
+requestAnimationFrame(function () { setTimeout(function () {
+  spin = canSpin ? window.Spin($('.hero-fig'), 'spin/') : null;
+  if (!spin) {   // no GPU: still renders per colour
+    canSpin = false;
+    (window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
+  }
+  render();
+}, 0); });
 })();
 </script>
 </body>
