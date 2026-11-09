@@ -56,7 +56,7 @@ const shell = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(css('--she
 const std = (c, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
 const trim = std(0x111214, 0.45, 0.2), rubber = std(0x0c0d0f, 0.9), seam = std(0x1a1b1e, 0.7);
 const glass = new THREE.MeshPhysicalMaterial({ color: 0xe4ecf7, roughness: 0.02, transparent: true, opacity: 0.12, envMapIntensity: 2.2, clearcoat: 1, side: THREE.DoubleSide, depthWrite: false });
-const felt = std(0x3a3c41, 1), backPanel = std(0xd6d6d3, 0.7), carpet = std(0x26282d, 1);
+const felt = std(0x3a3c41, 1), backPanel = new THREE.MeshPhysicalMaterial({ color: 0xc4c5c2, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.04 }), carpet = std(0x26282d, 1);
 const fabric = std(0x8b8d93, 0.95), fabricBase = std(0x45474d, 0.9), deskM = std(0xf1f1ee, 0.3), wood = std(0xb08657, 0.55), plate = std(0xececea, 0.4);
 const iconM = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
 const lightM = new THREE.MeshBasicMaterial({ color: 0x3a3d45, toneMapped: false });
@@ -78,9 +78,18 @@ const gltf = await new GLTFLoader().loadAsync(new URL('pod.glb', import.meta.url
 const model = gltf.scene; pod.add(model);
 const MATS = { Shell: shell, Trim: trim, Rubber: rubber, Seam: seam, Glass: glass, Felt: felt, BackPanel: backPanel, Carpet: carpet,
   Fabric: fabric, FabricBase: fabricBase, Desk: deskM, Wood: wood, Plate: plate, LightPanel: lightM, Screen: screenM, Icon: iconM };
+let logoM = null;
+const LOGO_DARK = new THREE.Color(0x262c30), LOGO_LIGHT = new THREE.Color(0xf2f2f2);
 model.traverse(o => {
   if (!o.isMesh) return;
-  const m = MATS[o.material && o.material.name]; if (m) o.material = m;
+  const src = o.material, m = MATS[src && src.name];
+  if (src && src.name === 'Logo') logoM = src;
+  if (m) {
+    // textile textures are made in Blender (colour baked in): keep them
+    if (src.map && !m.map) { m.map = src.map; m.map.anisotropy = 8; m.color.set(0xffffff); }
+    if (src.normalMap && !m.normalMap) { m.normalMap = src.normalMap; m.normalScale.copy(src.normalScale); }
+    o.material = m;
+  }
   const isGlass = o.material === glass || o.material === lightM || o.material === iconM || o.material === screenM;
   o.castShadow = !isGlass; o.receiveShadow = !isGlass;
 });
@@ -224,7 +233,7 @@ function tick(now) {
   glow.rotation.z = pod.rotation.y;
   door.rotation.y = doorBase + 1.15 * doorV;
   lightM.color.copy(LIGHT_OFF).lerp(LIGHT_ON, lightV);
-  inner.intensity = 3.4 * lightV;
+  inner.intensity = 2.4 * lightV;
   for (const g of PARTS) g.position.copy(g.userData.base).addScaledVector(g.userData.dir, exV);
   pMat.opacity = airA * 0.9;
   if (airA > 0.01) {
@@ -236,6 +245,7 @@ function tick(now) {
   else target = chosen;
   if (!shell.color.equals(target)) { shell.color.lerp(target, Math.min(1, dt * 7)); tmpC.copy(shell.color).sub(target);
     if (Math.abs(tmpC.r) + Math.abs(tmpC.g) + Math.abs(tmpC.b) < 0.003) shell.color.copy(target); busy = true; }
+  if (logoM) logoM.color.copy(shell.color.r + shell.color.g + shell.color.b < 0.7 ? LOGO_LIGHT : LOGO_DARK);
 
   renderer.render(scene, camera);
   if (exploring) placeHotspots();
