@@ -11,7 +11,7 @@ Blender is Z-up, metres; the pod's front faces -Y (glTF export turns that into +
 Contract with pod.js: empties PartShell / PartFront / PartBack / Furniture under Soundbox4,
 a 'Door' empty on the hinge axis, and the material names pod.js swaps (Shell, Trim, Glass, ...).
 """
-import bpy, bmesh, math, os
+import bpy, bmesh, json, math, os
 from collections import defaultdict
 import numpy as np
 from mathutils import Vector, Matrix
@@ -25,13 +25,23 @@ COL = bpy.data.collections.new('Soundbox4')
 SCENE.collection.children.link(COL)
 
 # ---------------------------------------------------------------- dimensions
-W, D, H = 2.2, 1.536, 2.3
+# POD_SIZE picks the model (outer W x D x H in metres, from sb.contex.com.hk); 4 is the default.
+SIZE = os.environ.get('POD_SIZE', '4')
+SPEC = {'1': (1.00, 0.936, 2.30), '2': (1.50, 1.236, 2.30), '4': (2.20, 1.536, 2.30),
+        '6': (2.20, 2.136, 2.30), '8': (3.00, 4.236, 2.346)}
+W, D, H = SPEC[SIZE]
 GAP, T, R = 0.008, 0.08, 0.11          # floor gap, shell wall, outer corner radius
 YF, YB = -D / 2, D / 2
 ZC, HA, HB = (GAP + H) / 2, W / 2, (H - GAP) / 2
-IX, FLOOR, CEIL = HA - T, GAP + T, H - T   # 1.02, 0.088, 2.22
+IX, FLOOR, CEIL = HA - T, GAP + T, H - T   # 1.02, 0.088, 2.22 for the 4-person pod
 GW = 0.035                                 # black gasket width
-PIVOT = Vector((0.32, -0.745, 1.154))      # door hinge axis (pod.js swings 'Door' about Y)
+OX = IX - GW                               # half-width of the glass opening
+IW = IX - 0.02                             # felt wall surface
+YI0, YI1 = YF + 0.056, YB - 0.076          # inside of the front frame / back panel face
+# door: free edge XF, hinge axis XH (pod.js / viewer swing 'Door' about this axis)
+XF, XH = {'1': (-OX + 0.012, OX - 0.003), '2': (-0.38, 0.40), '4': (-0.462, 0.32),
+          '6': (-0.462, 0.32), '8': (-0.56, 0.26)}[SIZE]
+PIVOT = Vector((XH, YF + 0.023, ZC))
 ZERO = Vector()
 
 # ---------------------------------------------------------------- materials
@@ -143,6 +153,7 @@ material('Red', '#c8102e', 0.35)
 material('Steel', '#1c1d20', 0.35, 0.8)
 material('Lens', '#05060a', 0.08, 0.2)
 material('Green', '#36d07a', 0.4, emit=1.5)
+material('Chrome', '#cfd3d6', 0.18, 1.0)
 material('Logo', '#262c30', 0.5)   # pod.js flips it to white on dark shells
 
 # ---------------------------------------------------------------- mesh helpers
@@ -423,7 +434,7 @@ pr.add(arc(T - bi, YB - bi, bi, 0, 90, 2), 0)
 obj('ShellTube', loft(pr.p, HA, HB, R, seg=14, vc=ZC), ['Shell', 'Seam'], SHELL)
 
 # fresh-air intake slots on the right side, just behind the front frame
-obj('SideVents', merge(*[box(HA - 0.004, HA + 0.0006, -0.645, -0.634, z - 0.018, z + 0.018, 0.003, 2)
+obj('SideVents', merge(*[box(HA - 0.004, HA + 0.0006, YF + 0.123, YF + 0.134, z - 0.018, z + 0.018, 0.003, 2)
                          for z in (1.82, 1.87, 1.92, 1.97, 2.02)]), 'Seam', SHELL)
 
 # Contex logo on both side panels: traced from blender/contex_logo.png (marching squares),
@@ -513,8 +524,9 @@ bpy.context.view_layer.update()
 logo_me = bpy.data.meshes.new_from_object(tmp.evaluated_get(bpy.context.evaluated_depsgraph_get()))
 bpy.data.objects.remove(tmp)
 LZ = 1.55                                   # logo centre height on the side panels
-for name, mtx in (('ContexLogoR', Matrix(((0, 0, 1, HA + 0.0002), (1, 0, 0, 0), (0, 1, 0, LZ), (0, 0, 0, 1)))),
-                  ('ContexLogoL', Matrix(((0, 0, -1, -HA - 0.0002), (-1, 0, 0, 0), (0, 1, 0, LZ), (0, 0, 0, 1))))):
+LS = min(1.0, 0.75 * (D - 0.15) / 0.72)     # shrink on narrow side panels (1-person pod)
+for name, mtx in (('ContexLogoR', Matrix(((0, 0, 1, HA + 0.0002), (LS, 0, 0, 0), (0, LS, 0, LZ), (0, 0, 0, 1)))),
+                  ('ContexLogoL', Matrix(((0, 0, -1, -HA - 0.0002), (-LS, 0, 0, 0), (0, LS, 0, LZ), (0, 0, 0, 1))))):
     bm = bmesh.new()
     bm.from_mesh(logo_me)
     bmesh.ops.transform(bm, matrix=mtx, verts=bm.verts)
@@ -522,26 +534,26 @@ for name, mtx in (('ContexLogoR', Matrix(((0, 0, 1, HA + 0.0002), (1, 0, 0, 0), 
     obj(name, bm, 'Logo', SHELL, smooth=False)
 bpy.data.meshes.remove(logo_me)
 
-# damping feet (8 mm floor gap)
+# damping feet (8 mm floor gap); extra pair along the long 8-person pod
 feet = []
 for sx in (-1, 1):
-    for sy in (-1, 1):
-        cx, cy = sx * 0.955, sy * 0.63
+    for cy in ((-1, 0, 1) if D > 3 else (-1, 1)):
+        cx, cy = sx * (HA - 0.145), cy * (D / 2 - 0.138)
         feet += [(cyl((cx, cy, 0), (cx, cy, 0.0035), 0.03, 24), 1),
                  (box(cx - 0.036, cx + 0.036, cy - 0.036, cy + 0.036, 0.003, 0.0125, 0.004, 2), 0)]
 obj('Feet', merge(*feet), ['Shell', 'Rubber'], SHELL)
 
 # interior lining
-obj('Carpet', box(-1.0, 1.0, -0.712, 0.692, FLOOR, 0.1, 0.002, 1), 'Carpet', SHELL)
-obj('FeltLeft', box(-IX, -1.0, -0.70, 0.692, 0.1, 2.19, 0.004, 2), 'Felt', SHELL)
-obj('FeltRight', box(1.0, IX, -0.70, 0.692, 0.1, 2.19, 0.004, 2), 'Felt', SHELL)
-obj('Ceiling', box(-1.0, 1.0, -0.68, 0.692, 2.19, 2.218, 0.004, 2), 'Felt', SHELL)
+obj('Carpet', box(-IW, IW, YI0, YI1, FLOOR, 0.1, 0.002, 1), 'Carpet', SHELL)
+obj('FeltLeft', box(-IX, -IW, YF + 0.068, YI1, FLOOR + 0.012, CEIL - 0.03, 0.004, 2), 'Felt', SHELL)
+obj('FeltRight', box(IW, IX, YF + 0.068, YI1, FLOOR + 0.012, CEIL - 0.03, 0.004, 2), 'Felt', SHELL)
+obj('Ceiling', box(-IW, IW, YF + 0.088, YI1, CEIL - 0.03, CEIL - 0.002, 0.004, 2), 'Felt', SHELL)
 
 # front header band behind the glass with the four touch controls
-obj('ControlPanel', box(-1.0, 1.0, -0.712, -0.68, 2.105, 2.205, 0.004, 2), 'Trim', SHELL)
-ICON_Y, ICON_Z = -0.7126, 2.152
+obj('ControlPanel', box(-IW, IW, YI0, YF + 0.088, CEIL - 0.115, CEIL - 0.015, 0.004, 2), 'Trim', SHELL)
+ICON_Y, ICON_Z = YF + 0.0554, CEIL - 0.068
 icons = []
-for i, x in enumerate((0.72, 0.775, 0.83, 0.885)):
+for i, x in enumerate(OX - d for d in (0.265, 0.21, 0.155, 0.10)):
     g = ring2d(x, ICON_Z, 0.0145, 0.0165)
     if i in (0, 1):    # fresh-air fan / exhaust fan
         nb = 3 if i == 0 else 4
@@ -559,75 +571,88 @@ for i, bm in enumerate(icons):
     obj(f'Icon{i}', bm, 'Icon', SHELL, smooth=False)
 
 # PIR presence sensor under the header
-obj('PirSensor', sphere((0.0, -0.69, 2.105), 0.016, 16, 8, half=True), 'Trim', SHELL)
+obj('PirSensor', sphere((0.0, YF + 0.078, CEIL - 0.115), 0.016, 16, 8, half=True), 'Trim', SHELL)
 
-# lighting: central linear pendant (4000K) + LED strips along both side walls
-obj('LedBarHousing', merge(box(-0.32, 0.32, 0.02, 0.08, 2.095, 2.125, 0.008, 3),
-                           cyl((-0.26, 0.05, 2.125), (-0.26, 0.05, 2.19), 0.0025, 8),
-                           cyl((0.26, 0.05, 2.125), (0.26, 0.05, 2.19), 0.0025, 8),
-                           cyl((-0.26, 0.05, 2.184), (-0.26, 0.05, 2.19), 0.02, 20, 0.002),
-                           cyl((0.26, 0.05, 2.184), (0.26, 0.05, 2.19), 0.02, 20, 0.002)), 'Trim', SHELL)
-obj('LedBar', box(-0.31, 0.31, 0.028, 0.072, 2.0935, 2.0955), 'LightPanel', SHELL, smooth=False)
+# lighting: linear pendants (4000K), one per ~1.5 m of depth, + LED strips along both side walls
+nbar = max(1, round((YI1 - YI0) / 1.5))
+bars = [(YI0 + YI1) / 2 + 0.06] if nbar == 1 else [YI0 + (i + 0.5) * (YI1 - YI0) / nbar for i in range(nbar)]
+lb = min(0.32, 0.62 * IW)
+hous, diff = [], []
+for yc in bars:
+    hous += [box(-lb, lb, yc - 0.03, yc + 0.03, CEIL - 0.125, CEIL - 0.095, 0.008, 3)]
+    for rx in (-lb + 0.06, lb - 0.06):
+        hous += [cyl((rx, yc, CEIL - 0.095), (rx, yc, CEIL - 0.03), 0.0025, 8),
+                 cyl((rx, yc, CEIL - 0.036), (rx, yc, CEIL - 0.03), 0.02, 20, 0.002)]
+    diff.append(box(-lb + 0.01, lb - 0.01, yc - 0.022, yc + 0.022, CEIL - 0.1265, CEIL - 0.1245))
+obj('LedBarHousing', merge(*hous), 'Trim', SHELL)
+obj('LedBar', merge(*diff), 'LightPanel', SHELL, smooth=False)
 for side, sx in (('', -1), ('R', 1)):
-    hx = sorted((sx * 1.0, sx * 0.958))
-    obj(f'LedEdgeHousing{side}', box(hx[0], hx[1], -0.68, 0.69, 2.165, 2.19, 0.003, 2), 'Trim', SHELL)
-    lx = sorted((sx * 0.995, sx * 0.963))
-    obj(f'LedEdge{side}', box(lx[0], lx[1], -0.675, 0.685, 2.1635, 2.1655), 'LightPanel', SHELL, smooth=False)
+    hx = sorted((sx * IW, sx * (IW - 0.042)))
+    obj(f'LedEdgeHousing{side}', box(hx[0], hx[1], YF + 0.088, YB - 0.078, CEIL - 0.055, CEIL - 0.03, 0.003, 2), 'Trim', SHELL)
+    lx = sorted((sx * (IW - 0.005), sx * (IW - 0.037)))
+    obj(f'LedEdge{side}', box(lx[0], lx[1], YF + 0.093, YB - 0.083, CEIL - 0.0565, CEIL - 0.0545), 'LightPanel', SHELL, smooth=False)
 
 # fresh-air grilles in the ceiling
 grilles = []
-for gx in (-0.55, 0.55):
-    grilles.append((cyl((gx, 0.38, 2.185), (gx, 0.38, 2.19), 0.08, 40, 0.002), 0))
-    grilles += [(torus(Vector((gx, 0.38, 2.1845)), (0, 0, 1), rr, 0.0022, 40, 6), 1) for rr in (0.022, 0.038, 0.054, 0.068)]
+gxs = (0.0,) if IW < 0.6 else (-0.55 * IW, 0.55 * IW)
+for gy in ((YB - 0.39, YF + 1.2) if D > 3 else (YB - (0.39 if D > 1.2 else 0.2),)):
+    for gx in gxs:
+        grilles.append((cyl((gx, gy, CEIL - 0.035), (gx, gy, CEIL - 0.03), 0.08, 40, 0.002), 0))
+        grilles += [(torus(Vector((gx, gy, CEIL - 0.0355)), (0, 0, 1), rr, 0.0022, 40, 6), 1) for rr in (0.022, 0.038, 0.054, 0.068)]
 obj('AirGrilles', merge(*grilles), ['Plate', 'Seam'], SHELL)
 
 # emergency hammer on the right wall, by the door
-obj('HammerHolder', merge(box(0.988, 1.0, -0.665, -0.625, 1.94, 2.08, 0.004, 2),
-                          box(0.958, 0.99, -0.655, -0.635, 1.955, 1.97, 0.002, 1),
-                          box(0.958, 0.99, -0.655, -0.635, 2.035, 2.05, 0.002, 1)), 'Trim', SHELL)
-obj('Hammer', merge(cyl((0.972, -0.645, 1.925), (0.972, -0.645, 2.06), 0.0115, 20, 0.003),
-                    box(0.961, 0.983, -0.69, -0.60, 2.055, 2.086, 0.004, 2)), 'Red', SHELL)
-obj('HammerTips', merge(cyl((0.972, -0.69, 2.0705), (0.972, -0.708, 2.0705), 0.012, 16, r1=0.002),
-                        cyl((0.972, -0.60, 2.0705), (0.972, -0.582, 2.0705), 0.012, 16, r1=0.002)), 'Steel', SHELL)
+obj('HammerHolder', merge(box(IW - 0.012, IW, YF + 0.103, YF + 0.143, CEIL - 0.28, CEIL - 0.14, 0.004, 2),
+                          box(IW - 0.042, IW - 0.01, YF + 0.113, YF + 0.133, CEIL - 0.265, CEIL - 0.25, 0.002, 1),
+                          box(IW - 0.042, IW - 0.01, YF + 0.113, YF + 0.133, CEIL - 0.185, CEIL - 0.17, 0.002, 1)), 'Trim', SHELL)
+obj('Hammer', merge(cyl((IW - 0.028, YF + 0.123, CEIL - 0.295), (IW - 0.028, YF + 0.123, CEIL - 0.16), 0.0115, 20, 0.003),
+                    box(IW - 0.039, IW - 0.017, YF + 0.078, YF + 0.168, CEIL - 0.165, CEIL - 0.134, 0.004, 2)), 'Red', SHELL)
+obj('HammerTips', merge(cyl((IW - 0.028, YF + 0.078, CEIL - 0.1495), (IW - 0.028, YF + 0.06, CEIL - 0.1495), 0.012, 16, r1=0.002),
+                        cyl((IW - 0.028, YF + 0.168, CEIL - 0.1495), (IW - 0.028, YF + 0.186, CEIL - 0.1495), 0.012, 16, r1=0.002)), 'Steel', SHELL)
 
 # light / fan switch on the left wall, by the door
-obj('WallSwitch', box(-1.0, -0.99, -0.655, -0.595, 1.22, 1.34, 0.004, 2), 'Trim', SHELL)
-obj('WallSwitchKeys', merge(cyl((-0.99, -0.625, 1.305), (-0.9865, -0.625, 1.305), 0.011, 24, 0.001),
-                            cyl((-0.99, -0.625, 1.255), (-0.9865, -0.625, 1.255), 0.011, 24, 0.001)), 'Plate', SHELL)
+obj('WallSwitch', box(-IW, -IW + 0.01, YF + 0.113, YF + 0.173, 1.22, 1.34, 0.004, 2), 'Trim', SHELL)
+obj('WallSwitchKeys', merge(cyl((-IW + 0.01, YF + 0.143, 1.305), (-IW + 0.0135, YF + 0.143, 1.305), 0.011, 24, 0.001),
+                            cyl((-IW + 0.01, YF + 0.143, 1.255), (-IW + 0.0135, YF + 0.143, 1.255), 0.011, 24, 0.001)), 'Plate', SHELL)
 
 # ================================================================ FRONT
 gpr = Prof()
-s0, s1, gy0, gy1, bg = T - 0.002, T + GW, YF + 0.007, -0.712, 0.006
+s0, s1, gy0, gy1, bg = T - 0.002, T + GW, YF + 0.007, YI0, 0.006
 gpr.add([(s0, gy1), (s0, gy0), (s1 - bg, gy0)]).add(arc(s1 - bg, gy0 + bg, bg, 270, 360, 3)).add([(s1, gy1)])
 obj('Gasket', loft(gpr.p, HA, HB, R, seg=14, vc=ZC, rmin=0.022), 'Trim', FRONT)
 
-GZ0, GZ1 = 0.11, 2.198          # glass runs into the gasket
-obj('GlassLeft', box(-1.0, -0.482, -0.74, -0.73, GZ0, GZ1), 'Glass', FRONT, smooth=False)
-obj('GlassRight', box(0.332, 1.0, -0.74, -0.73, GZ0, GZ1), 'Glass', FRONT, smooth=False)
-obj('MullionFree', box(-0.495, -0.469, -0.752, -0.718, 0.115, 2.193, 0.006, 3), 'Trim', FRONT)
-obj('MullionHinge', box(0.319, 0.345, -0.752, -0.718, 0.115, 2.193, 0.006, 3), 'Trim', FRONT)
-obj('HingeFixed', merge(box(0.3215, 0.37, -0.766, -0.724, 1.93, 2.03, 0.009, 3),
-                        box(0.3215, 0.37, -0.766, -0.724, 0.30, 0.40, 0.009, 3)), 'Trim', FRONT)
+GZ0, GZ1 = FLOOR + 0.022, CEIL - 0.022          # glass runs into the gasket
+GY0, GY1 = YF + 0.028, YF + 0.038
+if XF - 0.02 > -OX + 0.05:   # fixed glass + mullion left of the door
+    obj('GlassLeft', box(-IW, XF - 0.02, GY0, GY1, GZ0, GZ1), 'Glass', FRONT, smooth=False)
+    obj('MullionFree', box(XF - 0.033, XF - 0.007, YF + 0.016, YF + 0.05, FLOOR + 0.027, CEIL - 0.027, 0.006, 3), 'Trim', FRONT)
+if XH + 0.025 < OX - 0.05:   # fixed glass + mullion right of the hinge
+    obj('GlassRight', box(XH + 0.012, IW, GY0, GY1, GZ0, GZ1), 'Glass', FRONT, smooth=False)
+    obj('MullionHinge', box(XH - 0.001, XH + 0.025, YF + 0.016, YF + 0.05, FLOOR + 0.027, CEIL - 0.027, 0.006, 3), 'Trim', FRONT)
+HZ1, HZ0 = (CEIL - 0.29, CEIL - 0.19), (FLOOR + 0.212, FLOOR + 0.312)
+obj('HingeFixed', merge(*[box(XH + 0.0015, XH + 0.05, YF + 0.002, YF + 0.044, z0, z1, 0.009, 3) for z0, z1 in (HZ1, HZ0)]), 'Trim', FRONT)
 
 # floor edge seen through the glass, with the badge
-obj('Threshold', box(-0.985, 0.985, -0.716, -0.70, FLOOR, 0.168, 0.003, 2), 'Trim', FRONT)
+obj('Threshold', box(-OX, OX, YF + 0.052, YF + 0.068, FLOOR, FLOOR + 0.08, 0.003, 2), 'Trim', FRONT)
 FONT = '/System/Library/Fonts/Supplemental/Arial Rounded Bold.ttf'
-obj('Logo', merge(text('soundbox', 0.03, -0.935, -0.7166, 0.13, FONT),
-                  text('Movable Silence Booth', 0.0095, -0.795, -0.7166, 0.131, FONT),
-                  flat([disc2d(-0.948, 0.1385, 0.0075, 0.0058, 16)], -0.7166)), 'Icon', FRONT, smooth=False)
+BY = YF + 0.0514
+obj('Logo', merge(text('soundbox', 0.03, -OX + 0.05, BY, 0.13, FONT),
+                  text('Movable Silence Booth', 0.0095, -OX + 0.19, BY, 0.131, FONT),
+                  flat([disc2d(-OX + 0.037, 0.1385, 0.0075, 0.0058, 16)], BY)), 'Icon', FRONT, smooth=False)
 
-# door: frameless glass leaf hinged on the right mullion
+# door: frameless glass leaf hinged at XH
 P = PIVOT
-obj('DoorGlass', box(-0.462, 0.312, -0.75, -0.74, 0.13, 2.178), 'Glass', DOOR, P, smooth=False)
-obj('DoorEdgeFree', box(-0.468, -0.455, -0.755, -0.735, 0.13, 2.178, 0.003, 2), 'Trim', DOOR, P)
-obj('DoorSeal', merge(box(0.312, 0.318, -0.749, -0.741, 0.14, 2.17, 0.002, 1),
-                      box(-0.455, 0.312, -0.749, -0.741, 2.178, 2.185, 0.002, 1),
-                      box(-0.455, 0.312, -0.749, -0.741, 0.123, 0.13, 0.002, 1)), 'Rubber', DOOR, P)
-obj('HingeDoor', merge(box(0.27, 0.3185, -0.766, -0.724, 1.93, 2.03, 0.009, 3),
-                       box(0.27, 0.3185, -0.766, -0.724, 0.30, 0.40, 0.009, 3)), 'Trim', DOOR, P)
-HX, HZ = -0.40, 1.10
+DY0, DY1 = YF + 0.018, YF + 0.028
+DZ_0, DZ_1 = FLOOR + 0.042, CEIL - 0.042
+obj('DoorGlass', box(XF, XH - 0.008, DY0, DY1, DZ_0, DZ_1), 'Glass', DOOR, P, smooth=False)
+obj('DoorEdgeFree', box(XF - 0.006, XF + 0.007, YF + 0.013, YF + 0.033, DZ_0, DZ_1, 0.003, 2), 'Trim', DOOR, P)
+obj('DoorSeal', merge(box(XH - 0.008, XH - 0.002, YF + 0.019, YF + 0.027, DZ_0 + 0.01, DZ_1 - 0.008, 0.002, 1),
+                      box(XF + 0.007, XH - 0.008, YF + 0.019, YF + 0.027, DZ_1, DZ_1 + 0.007, 0.002, 1),
+                      box(XF + 0.007, XH - 0.008, YF + 0.019, YF + 0.027, DZ_0 - 0.007, DZ_0, 0.002, 1)), 'Rubber', DOOR, P)
+obj('HingeDoor', merge(*[box(XH - 0.05, XH - 0.0015, YF + 0.002, YF + 0.044, z0, z1, 0.009, 3) for z0, z1 in (HZ1, HZ0)]), 'Trim', DOOR, P)
+HX, HZ = XF + 0.062, 1.10
 for tag, sy in (('-1', -1), ('1', 1)):          # -1 = outside, 1 = inside
-    face = -0.745 + sy * 0.005
+    face = P.y + sy * 0.005
     rose = cyl((HX, face, HZ), (HX, face + sy * 0.011, HZ), 0.026, 32, 0.003)
     lever = sweep(fillet([(HX, face + sy * 0.006, HZ), (HX, face + sy * 0.05, HZ), (HX + 0.135, face + sy * 0.056, HZ)], 0.014, 6), 0.0085, 16)
     tip = sphere((HX + 0.135, face + sy * 0.056, HZ), 0.0085, 16, 8)
@@ -635,66 +660,237 @@ for tag, sy in (('-1', -1), ('1', 1)):          # -1 = outside, 1 = inside
     obj(f'Lever{tag}', merge(lever, tip), 'Steel', DOOR, P)
 
 # ================================================================ BACK
-obj('BackCap', slab(IX - 0.0005, (CEIL - FLOOR) / 2 - 0.0005, R - T - 0.0005, 0.702, 0.762, 0.006, 'XZ', 0, ZC, 14), 'Shell', BACK)
-obj('BackPanel', box(-1.0, 1.0, 0.692, 0.702, 0.1, 2.19, 0.003, 2), 'BackPanel', BACK)
+obj('BackCap', slab(IX - 0.0005, (CEIL - FLOOR) / 2 - 0.0005, R - T - 0.0005, YB - 0.066, YB - 0.006, 0.006, 'XZ', 0, ZC, 14), 'Shell', BACK)
+obj('BackPanel', box(-IW, IW, YI1, YB - 0.066, FLOOR + 0.012, CEIL - 0.03, 0.003, 2), 'BackPanel', BACK)
 
 # ================================================================ FURNITURE
-# SY-05 sofas: dark seat block on a black steel frame, lighter back + high end panel (L/R pair)
-def sofa(sg, tag):
+def put(bm, cx, cy, yaw):
+    """Local furniture (facing -Y) -> world: turn by yaw about Z, move to (cx, cy)."""
+    bmesh.ops.transform(bm, matrix=Matrix.Translation((cx, cy, 0)) @ Matrix.Rotation(yaw, 4, 'Z'), verts=bm.verts)
+    return bm
+
+def sofa(sg, tag, y0, y1):
+    """SY-05/06: dark seat block on a black steel frame, lighter back + high end panel at the back."""
     X = lambda u: sg * u
     xr = lambda u0, u1: sorted((X(u0), X(u1)))
-    obj(f'SofaSeat{tag}', box(*xr(0.475, 0.995), -0.55, 0.655, 0.235, 0.45, 0.032, 4), 'FabricBase', FURN)
-    back = hexa({(i, j, k): (X((0.862, 0.878)[k] if i == 0 else 0.995), (-0.55, 0.53)[j], (0.442, 0.925)[k])
-                 for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.04, 4)
-    end = hexa({(i, j, k): (X((0.49, 0.615)[k] if i == 0 else 0.995), (0.525, 0.655)[j], (0.442, 0.925)[k])
+    n = 2 if y1 - y0 < 1.5 else 3
+    cl = (y1 - 0.125 - y0) / n                # cushion length along the wall
+    seat = [box(*xr(IW - 0.525, IW - 0.005), y0, y1, 0.235, 0.36, 0.02, 3)]
+    seat += [box(*xr(IW - 0.52, IW - 0.13), y0 + i * cl + 0.004, y0 + (i + 1) * cl - 0.004, 0.355, 0.455, 0.035, 4) for i in range(n)]
+    seat.append(box(*xr(IW - 0.52, IW - 0.13), y1 - 0.125, y1, 0.355, 0.44, 0.02, 3))
+    obj(f'SofaSeat{tag}', merge(*seat), 'FabricBase', FURN)
+    back = merge(*[hexa({(i, j, k): (X((IW - 0.138, IW - 0.122)[k] if i == 0 else IW - 0.005),
+                                   (y0 + c * cl + 0.004, y0 + (c + 1) * cl - 0.004)[j], (0.452, 0.925)[k])
+                         for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.045, 4) for c in range(n)])
+    end = hexa({(i, j, k): (X((IW - 0.51, IW - 0.385)[k] if i == 0 else IW - 0.005), (y1 - 0.13, y1)[j], (0.442, 0.925)[k])
                 for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.04, 4)
     obj(f'SofaBack{tag}', merge(back, end), 'Fabric', FURN)
     legs = []
-    for u in (0.505, 0.955):
-        legs += [box(*xr(u - 0.0125, u + 0.0125), y - 0.0125, y + 0.0125, 0.1, 0.236, 0.003, 1) for y in (-0.515, 0.62)]
-        legs.append(box(*xr(u - 0.0125, u + 0.0125), -0.53, 0.635, 0.212, 0.236, 0.003, 1))
+    ys = [y0 + 0.035, y1 - 0.035] + ([(y0 + y1) / 2] if y1 - y0 > 1.5 else [])
+    for u in (IW - 0.495, IW - 0.045):
+        legs += [box(*xr(u - 0.0125, u + 0.0125), y - 0.0125, y + 0.0125, 0.1, 0.236, 0.003, 1) for y in ys]
+        legs.append(box(*xr(u - 0.0125, u + 0.0125), y0 + 0.02, y1 - 0.02, 0.212, 0.236, 0.003, 1))
     obj(f'SofaFrame{tag}', merge(*legs), 'Steel', FURN)
 
-sofa(-1, '-1')
-sofa(1, '1')
+def desk_top(name, x0, x1, y0, y1, z, r=0.035):
+    """White laminate top with a birch-ply edge, 26 mm thick."""
+    obj(name, slab((x1 - x0) / 2, (y1 - y0) / 2, r, z - 0.026, z, 0.0015, 'XY', (x0 + x1) / 2, (y0 + y1) / 2, 8, 2, side=1, cap0=0, cap1=0),
+        ['Desk', 'Wood'], FURN)
 
-# ST-05 desk: birch-edged top, white pedestal at the back, round column + floor disc at the front
-DY0, DY1, DZ0, DZ1 = -0.28, 0.61, 0.804, 0.83
-obj('DeskTop', slab(0.31, (DY1 - DY0) / 2, 0.035, DZ0, DZ1, 0.0015, 'XY', 0, (DY0 + DY1) / 2, 8, 2, side=1, cap0=0, cap1=0),
-    ['Desk', 'Wood'], FURN)
-obj('DeskCabinet', box(-0.21, 0.21, 0.30, 0.60, 0.13, DZ0, 0.005, 2), 'Desk', FURN)
-obj('DeskCabinetSeam', merge(box(-0.0015, 0.0015, 0.2994, 0.301, 0.15, 0.78), box(-0.19, 0.19, 0.2994, 0.301, 0.7785, 0.7815)), 'Seam', FURN, smooth=False)
-obj('DeskPlinth', box(-0.19, 0.19, 0.32, 0.58, 0.1, 0.131), 'Trim', FURN)
-obj('DeskLeg', merge(cyl((0, -0.19, 0.1), (0, -0.19, 0.112), 0.10, 48, 0.004),
-                     cyl((0, -0.19, 0.112), (0, -0.19, DZ0), 0.025, 32),
-                     cyl((0, -0.19, DZ0 - 0.008), (0, -0.19, DZ0), 0.06, 32, 0.002)), 'Desk', FURN)
-obj('DeskPowerBox', box(0.24, 0.30, 0.02, 0.24, 0.75, DZ0, 0.004, 2), 'Trim', FURN)
-obj('DeskSockets', merge(box(0.30, 0.3025, 0.055, 0.095, 0.757, 0.797, 0.004, 2),
-                         box(0.30, 0.3025, 0.115, 0.155, 0.757, 0.797, 0.004, 2),
-                         cyl((0.30, 0.20, 0.777), (0.304, 0.20, 0.777), 0.012, 24, 0.0012)), 'Plate', FURN)
-obj('DeskSocketHoles', merge(*[box(0.3025, 0.3032, y - 0.0015, y + 0.0015, 0.781, 0.789) for y in (0.067, 0.083, 0.127, 0.143)],
-                             *[box(0.3025, 0.3032, y - 0.004, y + 0.004, 0.768, 0.772) for y in (0.075, 0.135)]), 'Trim', FURN, smooth=False)
-obj('DeskGrommet', cyl((0.19, 0.50, DZ1 - 0.001), (0.19, 0.50, DZ1 + 0.0015), 0.03, 32, 0.001), 'Trim', FURN)
+def grommet(x, y, z, tag=''):
+    obj(f'DeskGrommet{tag}', cyl((x, y, z - 0.001), (x, y, z + 0.0015), 0.03, 32, 0.001), 'Trim', FURN)
 
-# SJ-01 display stand, 27" screen, conference camera bar
-obj('StandColumn', merge(slab(0.07, 0.025, 0.018, 0.1, 1.40, 0.004, 'XY', 0, 0.65, 8),
-                         box(-0.15, 0.15, 0.605, 0.69, 0.1, 0.112, 0.004, 2)), 'Plate', FURN)
-obj('StandBracket', box(-0.05, 0.05, 0.612, 0.626, 1.17, 1.37, 0.003, 2), 'Trim', FURN)
-MZ = 1.268
-obj('Monitor', merge(slab(0.31, 0.19, 0.008, 0.583, 0.598, 0.002, 'XZ', 0, MZ, 6),
-                     slab(0.23, 0.15, 0.03, 0.597, 0.614, 0.008, 'XZ', 0, MZ, 8)), 'Trim', FURN)
-bm = bmesh.new()
-uv = bm.loops.layers.uv.new('UVMap')
-f = bm.faces.new([bm.verts.new(p) for p in ((-0.3, 0.5824, MZ - 0.178), (0.3, 0.5824, MZ - 0.178), (0.3, 0.5824, MZ + 0.178), (-0.3, 0.5824, MZ + 0.178))])
-for loop, t in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
-    loop[uv].uv = t
-obj('MonitorScreen', bm, 'Screen', FURN, smooth=False)
-CZ = 1.495
-obj('CameraBar', slab(0.165, 0.029, 0.027, 0.57, 0.62, 0.007, 'XZ', 0, CZ, 10), 'Plate', FURN)
-obj('CameraGlass', merge(slab(0.07, 0.019, 0.017, 0.5685, 0.5705, 0, 'XZ', 0, CZ, 8),
-                         box(-0.03, 0.03, 0.598, 0.62, 1.456, 1.468, 0.002, 1)), 'Trim', FURN)
-obj('CameraLens', cyl((0, 0.5687, CZ), (0, 0.5672, CZ), 0.012, 32), 'Lens', FURN)
-obj('CameraRing', torus(Vector((0, 0.5682, CZ)), (0, 1, 0), 0.0148, 0.0018, 32, 6), 'Green', FURN)
+def display_stand(dy):
+    """SJ-01 stand, 27-inch screen and conference camera bar, against the back wall (dy shifts from the 4-person layout)."""
+    obj('StandColumn', merge(slab(0.07, 0.025, 0.018, 0.1, 1.40, 0.004, 'XY', 0, 0.65 + dy, 8),
+                             box(-0.15, 0.15, 0.605 + dy, 0.69 + dy, 0.1, 0.112, 0.004, 2)), 'Plate', FURN)
+    obj('StandBracket', box(-0.05, 0.05, 0.612 + dy, 0.626 + dy, 1.17, 1.37, 0.003, 2), 'Trim', FURN)
+    MZ = 1.268
+    obj('Monitor', merge(slab(0.31, 0.19, 0.008, 0.583 + dy, 0.598 + dy, 0.002, 'XZ', 0, MZ, 6),
+                         slab(0.23, 0.15, 0.03, 0.597 + dy, 0.614 + dy, 0.008, 'XZ', 0, MZ, 8)), 'Trim', FURN)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new('UVMap')
+    sy = 0.5824 + dy
+    f = bm.faces.new([bm.verts.new(p) for p in ((-0.3, sy, MZ - 0.178), (0.3, sy, MZ - 0.178), (0.3, sy, MZ + 0.178), (-0.3, sy, MZ + 0.178))])
+    for loop, t in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+        loop[uv].uv = t
+    obj('MonitorScreen', bm, 'Screen', FURN, smooth=False)
+    CZ = 1.495
+    obj('CameraBar', slab(0.165, 0.029, 0.027, 0.57 + dy, 0.62 + dy, 0.007, 'XZ', 0, CZ, 10), 'Plate', FURN)
+    obj('CameraGlass', merge(slab(0.07, 0.019, 0.017, 0.5685 + dy, 0.5705 + dy, 0, 'XZ', 0, CZ, 8),
+                             box(-0.03, 0.03, 0.598 + dy, 0.62 + dy, 1.456, 1.468, 0.002, 1)), 'Trim', FURN)
+    obj('CameraLens', cyl((0, 0.5687 + dy, CZ), (0, 0.5672 + dy, CZ), 0.012, 32), 'Lens', FURN)
+    obj('CameraRing', torus(Vector((0, 0.5682 + dy, CZ)), (0, 1, 0), 0.0148, 0.0018, 32, 6), 'Green', FURN)
+
+def pedestal_desk(dy, extra):
+    """ST-05/06: top on a white pedestal at the back wall + one round column at the front."""
+    y1 = 0.61 + dy
+    y0 = -0.28 + dy - extra
+    desk_top('DeskTop', -0.31, 0.31, y0, y1, 0.83)
+    obj('DeskCabinet', box(-0.21, 0.21, y1 - 0.31, y1 - 0.01, 0.13, 0.804, 0.005, 2), 'Desk', FURN)
+    obj('DeskCabinetSeam', merge(box(-0.0015, 0.0015, y1 - 0.3106, y1 - 0.309, 0.15, 0.78),
+                                 box(-0.19, 0.19, y1 - 0.3106, y1 - 0.309, 0.7785, 0.7815)), 'Seam', FURN, smooth=False)
+    obj('DeskPlinth', box(-0.19, 0.19, y1 - 0.29, y1 - 0.03, 0.1, 0.131), 'Trim', FURN)
+    ly = y0 + 0.09
+    obj('DeskLeg', merge(cyl((0, ly, 0.1), (0, ly, 0.112), 0.10, 48, 0.004), cyl((0, ly, 0.112), (0, ly, 0.804), 0.025, 32),
+                         cyl((0, ly, 0.796), (0, ly, 0.804), 0.06, 32, 0.002)), 'Desk', FURN)
+    p = y0 + 0.30   # power module under the top, facing the right-hand sofa
+    obj('DeskPowerBox', box(0.24, 0.30, p, p + 0.22, 0.75, 0.804, 0.004, 2), 'Trim', FURN)
+    obj('DeskSockets', merge(box(0.30, 0.3025, p + 0.035, p + 0.075, 0.757, 0.797, 0.004, 2),
+                             box(0.30, 0.3025, p + 0.095, p + 0.135, 0.757, 0.797, 0.004, 2),
+                             cyl((0.30, p + 0.18, 0.777), (0.304, p + 0.18, 0.777), 0.012, 24, 0.0012)), 'Plate', FURN)
+    obj('DeskSocketHoles', merge(*[box(0.3025, 0.3032, y - 0.0015, y + 0.0015, 0.781, 0.789) for y in (p + 0.047, p + 0.063, p + 0.107, p + 0.123)],
+                                 *[box(0.3025, 0.3032, y - 0.004, y + 0.004, 0.768, 0.772) for y in (p + 0.055, p + 0.115)]), 'Trim', FURN, smooth=False)
+    grommet(0.19, y1 - 0.11, 0.83)
+
+def high_stool(cx, cy, yaw, tag=''):
+    """SY-01: black seat with a low back lip on a steel column, foot ring and floor disc."""
+    parts = [cyl((0, 0, 0.1), (0, 0, 0.112), 0.19, 48, 0.004), cyl((0, 0, 0.112), (0, 0, 0.70), 0.022, 24),
+             torus(Vector((0, 0, 0.36)), (0, 0, 1), 0.17, 0.008, 48, 8)]
+    parts += [sweep([(0.02 * math.cos(a), 0.02 * math.sin(a), 0.33), (0.165 * math.cos(a), 0.165 * math.sin(a), 0.36)], 0.006, 8)
+              for a in (math.pi / 2 + k * 2 * math.pi / 3 for k in range(3))]
+    obj(f'StoolFrame{tag}', put(merge(*parts), cx, cy, yaw), 'Steel', FURN)
+    seat = merge(slab(0.19, 0.18, 0.11, 0.70, 0.75, 0.014, 'XY', 0, 0, 10),
+                 box(-0.15, 0.15, 0.15, 0.19, 0.74, 0.86, 0.018, 3))
+    obj(f'StoolSeat{tag}', put(seat, cx, cy, yaw), 'Trim', FURN)
+
+def office_chair(cx, cy, yaw, tag=''):
+    """SY-02: five-star swivel base on castors, upholstered seat and back."""
+    base = [cyl((0, 0, 0.13), (0, 0, 0.17), 0.045, 24, 0.004), cyl((0, 0, 0.17), (0, 0, 0.30), 0.03, 24), cyl((0, 0, 0.30), (0, 0, 0.44), 0.022, 24)]
+    for k in range(5):
+        a = math.pi / 2 + k * 2 * math.pi / 5
+        c, s = math.cos(a), math.sin(a)
+        base += [sweep([(0.03 * c, 0.03 * s, 0.155), (0.29 * c, 0.29 * s, 0.135)], 0.016, 10), sphere((0.30 * c, 0.30 * s, 0.124), 0.024, 12, 8)]
+    base.append(box(-0.025, 0.025, 0.10, 0.24, 0.45, 0.62, 0.006, 2))
+    obj(f'ChairFrame{tag}', put(merge(*base), cx, cy, yaw), 'Steel', FURN)
+    obj(f'ChairSeat{tag}', put(slab(0.24, 0.23, 0.08, 0.44, 0.52, 0.025, 'XY', 0, 0, 10, 3), cx, cy, yaw), 'FabricBase', FURN)
+    back = hexa({(i, j, k): ((-0.22, 0.22)[i], (0.20 + 0.04 * k, 0.25 + 0.04 * k)[j], (0.56, 1.02)[k])
+                 for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.03, 4)
+    obj(f'ChairBack{tag}', put(back, cx, cy, yaw), 'Fabric', FURN)
+
+def meeting_chair(cx, cy, yaw, tag=''):
+    """SY-03: cantilever chair, chrome tube frame, upholstered seat and back."""
+    frame = [sweep(fillet([(x, 0.22, 0.111), (x, -0.20, 0.111), (x, -0.25, 0.25), (x, -0.20, 0.44), (x, 0.20, 0.45), (x, 0.23, 0.86)], 0.05, 6), 0.011, 12)
+             for x in (-0.21, 0.21)]
+    frame.append(sweep([(-0.21, 0.21, 0.111), (0.21, 0.21, 0.111)], 0.011, 12))
+    obj(f'MeetChairFrame{tag}', put(merge(*frame), cx, cy, yaw), 'Chrome', FURN)
+    obj(f'MeetChairSeat{tag}', put(slab(0.24, 0.23, 0.06, 0.455, 0.515, 0.02, 'XY', 0, 0, 10, 3), cx, cy, yaw), 'FabricBase', FURN)
+    back = hexa({(i, j, k): ((-0.23, 0.23)[i], (0.235 + 0.04 * k, 0.27 + 0.04 * k)[j], (0.58, 0.88)[k])
+                 for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.025, 4)
+    obj(f'MeetChairBack{tag}', put(back, cx, cy, yaw), 'Fabric', FURN)
+
+def laptop(cx, cy, z, yaw, tag=''):
+    """Open 14-inch laptop, user on its -Y side."""
+    base = slab(0.155, 0.105, 0.012, z, z + 0.012, 0.003, 'XY', 0, 0, 6, 2)
+    lid = hexa({(i, j, k): ((-0.155, 0.155)[i], 0.105 - 0.006 * j + 0.05 * k, (z + 0.012, z + 0.212)[k] + 0.0)
+                for i in (0, 1) for j in (0, 1) for k in (0, 1)}, 0.003, 2)
+    obj(f'Laptop{tag}', put(merge(base, lid), cx, cy, yaw), 'Plate', FURN)
+    scr = hexa({(i, j, k): ((-0.145, 0.145)[i], 0.0985 - 0.001 * j + 0.047 * k, (z + 0.022, z + 0.205)[k])
+                for i in (0, 1) for j in (0, 1) for k in (0, 1)})
+    keys = box(-0.13, 0.13, -0.02, 0.085, z + 0.012, z + 0.0125)
+    obj(f'LaptopScreen{tag}', put(merge(scr, keys), cx, cy, yaw), 'Lens', FURN, smooth=False)
+
+def mug(cx, cy, z, tag=''):
+    body = cyl((cx, cy, z), (cx, cy, z + 0.09), 0.04, 32, 0.004)
+    handle = torus(Vector((cx + 0.045, cy, z + 0.048)), (0, 1, 0), 0.022, 0.006, 20, 8)
+    obj(f'Mug{tag}', merge(body, handle), 'Desk', FURN)
+    obj(f'MugCoffee{tag}', cyl((cx, cy, z + 0.075), (cx, cy, z + 0.0752), 0.036, 32), 'Seam', FURN, smooth=False)
+
+def notebook(cx, cy, z, yaw, tag=''):
+    obj(f'Notebook{tag}', put(box(-0.075, 0.075, -0.105, 0.105, z, z + 0.012, 0.003, 2), cx, cy, yaw), 'Trim', FURN)
+    obj(f'Pen{tag}', put(cyl((0.09, -0.08, z + 0.005), (0.09, 0.07, z + 0.005), 0.0045, 12), cx, cy, yaw), 'Chrome', FURN)
+
+def wall_socket(x, y, z, facing, tag=''):
+    """Double socket plate; facing 'back' = on the back wall, 'left' = on the left wall."""
+    if facing == 'back':
+        plate = box(x - 0.075, x + 0.075, y - 0.008, y, z - 0.043, z + 0.043, 0.004, 2)
+        holes = [box(x + dx - 0.0015, x + dx + 0.0015, y - 0.0088, y - 0.0079, z + 0.004, z + 0.016) for dx in (-0.045, -0.029, 0.029, 0.045)]
+        holes += [box(x + dx - 0.004, x + dx + 0.004, y - 0.0088, y - 0.0079, z - 0.016, z - 0.010) for dx in (-0.037, 0.037)]
+    else:
+        plate = box(x, x + 0.008, y - 0.075, y + 0.075, z - 0.043, z + 0.043, 0.004, 2)
+        holes = [box(x + 0.0079, x + 0.0088, y + dy - 0.0015, y + dy + 0.0015, z + 0.004, z + 0.016) for dy in (-0.045, -0.029, 0.029, 0.045)]
+        holes += [box(x + 0.0079, x + 0.0088, y + dy - 0.004, y + dy + 0.004, z - 0.016, z - 0.010) for dy in (-0.037, 0.037)]
+    obj(f'WallSocket{tag}', plate, 'Plate', SHELL)
+    obj(f'WallSocketHoles{tag}', merge(*holes), 'Trim', SHELL, smooth=False)
+
+# felt panel joints: thin dark lines on the side walls and across the ceiling (~60 cm panels)
+seams = []
+L = YI1 - (YF + 0.068)
+for i in range(1, max(2, round(L / 0.6))):
+    yv = YF + 0.068 + i * L / max(2, round(L / 0.6))
+    seams += [box(-IW, -IW + 0.0008, yv - 0.0015, yv + 0.0015, FLOOR + 0.02, CEIL - 0.06),
+              box(IW - 0.0008, IW, yv - 0.0015, yv + 0.0015, FLOOR + 0.02, CEIL - 0.06),
+              box(-IW + 0.045, IW - 0.045, yv - 0.0015, yv + 0.0015, CEIL - 0.0308, CEIL - 0.03)]
+seams += [box(-IW, -IW + 0.0008, YF + 0.07, YI1, 1.1 - 0.0015, 1.1 + 0.0015), box(IW - 0.0008, IW, YF + 0.07, YI1, 1.1 - 0.0015, 1.1 + 0.0015)]
+obj('FeltSeams', merge(*seams), 'Seam', SHELL, smooth=False)
+
+# coat hooks on the left wall by the door
+hooks = []
+for hy in (YF + 0.26, YF + 0.36):
+    hooks += [cyl((-IW, hy, 1.66), (-IW + 0.006, hy, 1.66), 0.014, 20, 0.002),
+              sweep(fillet([(-IW + 0.005, hy, 1.66), (-IW + 0.055, hy, 1.66), (-IW + 0.07, hy, 1.70)], 0.015, 5), 0.005, 10)]
+obj('CoatHooks', merge(*hooks), 'Chrome', SHELL)
+
+if SIZE in ('4', '6'):
+    extra = D - 1.536                       # the 6-person pod is 60 cm deeper: longer sofas + desk
+    sofa(-1, '-1', YI0 + 0.162, YI1 - 0.037)
+    sofa(1, '1', YI0 + 0.162, YI1 - 0.037)
+    dy = YI1 - 0.692
+    pedestal_desk(dy, extra * 0.6)
+    display_stand(dy)
+    ym = (-0.28 + dy - extra * 0.6 + 0.61 + dy) / 2
+    laptop(-0.13, ym - 0.05, 0.83, -math.pi / 2)
+    mug(0.17, ym - 0.22, 0.83)
+    notebook(0.15, ym + 0.12, 0.83, 0.2)
+    wall_socket(0.34, YI1, 0.95, 'back')
+elif SIZE == '1':                           # ST-01 wall desk on the back wall + SY-01 high stool
+    desk_top('DeskTop', -IW + 0.04, IW - 0.04, YI1 - 0.31, YI1 - 0.004, 1.03, 0.03)
+    obj('DeskBrackets', merge(*[merge(box(x - 0.008, x + 0.008, YI1 - 0.27, YI1 - 0.004, 0.99, 1.004, 0.003, 1),
+                                      box(x - 0.008, x + 0.008, YI1 - 0.012, YI1 - 0.002, 0.84, 1.004, 0.003, 1))
+                                for x in (-IW + 0.12, IW - 0.12)]), 'Steel', FURN)
+    high_stool(0.0, -0.06, 0.0)
+    laptop(-0.03, YI1 - 0.17, 1.03, 0.0)
+    mug(0.26, YI1 - 0.12, 1.03)
+    wall_socket(0.22, YI1, 1.2, 'back')
+elif SIZE == '2':                           # ST-04 desk off the left wall + SY-02 swivel chair
+    x0, x1 = -IW, -IW + 0.62
+    desk_top('DeskTop', x0, x1, -0.38, 0.38, 0.755)
+    obj('DeskLegPanel', box(x1 - 0.045, x1 - 0.02, -0.34, 0.34, 0.1, 0.729, 0.004, 2), 'Desk', FURN)
+    obj('DeskCleat', box(x0, x0 + 0.014, -0.32, 0.32, 0.67, 0.729, 0.003, 1), 'Desk', FURN)
+    grommet(x0 + 0.12, 0.26, 0.755)
+    office_chair(0.12, 0.0, -math.pi / 2)
+    laptop(-IW + 0.32, 0.03, 0.755, math.pi / 2)
+    mug(-IW + 0.36, -0.27, 0.755)
+    notebook(-IW + 0.2, 0.25, 0.755, 0.1)
+    wall_socket(-IW, 0.15, 1.0, 'left')
+elif SIZE == '8':                           # ST-10 meeting table + 8 x SY-03 cantilever chairs
+    ty0, ty1 = -1.45, 1.15
+    desk_top('DeskTop', -0.55, 0.55, ty0, ty1, 0.755, 0.06)
+    for i, ly in enumerate((ty0 + 0.35, ty1 - 0.35)):
+        obj(f'TableLeg{i}', box(-0.38, 0.38, ly - 0.02, ly + 0.02, 0.112, 0.729, 0.004, 2), 'Desk', FURN)
+        obj(f'TableFoot{i}', box(-0.40, 0.40, ly - 0.04, ly + 0.04, 0.1, 0.114, 0.004, 2), 'Steel', FURN)
+    grommet(0, ty0 + 0.6, 0.755, 'A')
+    grommet(0, ty1 - 0.6, 0.755, 'B')
+    laptop(-0.28, -0.45, 0.755, -math.pi / 2, 'A')
+    laptop(0.28, 0.25, 0.755, math.pi / 2, 'B')
+    notebook(-0.25, 0.4, 0.755, -0.15, 'A')
+    mug(0.3, -0.7, 0.755, 'A')
+    mug(-0.32, 0.75, 0.755, 'B')
+    wall_socket(0.7, YI1, 0.45, 'back')
+    for k, cy in enumerate(ty0 + 0.33 + i * (ty1 - ty0 - 0.66) / 3 for i in range(4)):
+        meeting_chair(-0.88, cy, math.pi / 2, f'L{k}')
+        meeting_chair(0.88, cy, -math.pi / 2, f'R{k}')
+
+# where the web viewer flies to when you "step inside" (three.js axes: x, y up, z = -Blender y)
+DOORX = (XF + XH) / 2
+SPOTS = {
+    '1': {'seat': [[0, 1.45, 0.08], [0, 1.15, -0.45]], 'door': [[0, 1.6, 0.28], [0, 1.2, -0.5]], 'out': [[0, 1.45, -0.2], [0, 1.3, 1.5]], 'seatLabel': '坐低'},
+    '2': {'seat': [[0.12, 1.15, 0], [-0.6, 0.95, 0]], 'door': [[DOORX, 1.6, 0.4], [-0.2, 1.1, -0.5]], 'out': [[-0.3, 1.15, -0.3], [0.3, 1.2, 1.6]], 'seatLabel': '坐低'},
+    '4': {'seat': [[-0.72, 1.12, 0.15], [0, 1.25, -0.6]], 'door': [[-0.05, 1.6, 0.5], [0, 1.1, -0.7]], 'out': [[0.72, 1.12, -0.35], [-0.4, 1.2, 1.5]], 'seatLabel': '坐梳化'},
+    '6': {'seat': [[-0.72, 1.12, 0.35], [0, 1.25, -0.9]], 'door': [[-0.05, 1.6, 0.8], [0, 1.1, -1.0]], 'out': [[0.72, 1.12, -0.6], [-0.4, 1.2, 2.0]], 'seatLabel': '坐梳化'},
+    '8': {'seat': [[-0.88, 1.15, 0.6], [0.6, 1.0, -1.0]], 'door': [[DOORX, 1.6, 1.75], [0, 1.1, -1.8]], 'out': [[0.88, 1.15, -1.0], [-0.3, 1.2, 3.0]], 'seatLabel': '坐低'},
+}[SIZE]
+ROOT['pod'] = json.dumps({'size': SIZE, 'w': W, 'd': D, 'h': H, 'doorway': [DOORX, 1.45, D / 2 + 0.6], 'spots': SPOTS}, ensure_ascii=False)
 
 # ---------------------------------------------------------------- export
 for me in bpy.data.meshes:   # only the screen and the textiles need UVs
@@ -707,8 +903,9 @@ tris = sum(sum(len(p.vertices) - 2 for p in o.evaluated_get(dg).data.polygons) f
 print(f'objects={sum(o.type == "MESH" for o in COL.objects)} tris={tris}')
 
 os.makedirs(HERE, exist_ok=True)
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, 'soundbox4.blend'))
-bpy.ops.export_scene.gltf(filepath=os.path.join(REPO, 'pod.glb'), export_format='GLB', use_selection=False,
+GLB = os.path.join(REPO, 'pod.glb' if SIZE == '4' else f'pod-{SIZE}.glb')
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, f'soundbox{SIZE}.blend'))
+bpy.ops.export_scene.gltf(filepath=GLB, export_format='GLB', use_selection=False, export_extras=True,
                           export_apply=True, export_yup=True, export_texcoords=True, export_normals=True,
                           export_materials='EXPORT', export_image_format='JPEG', export_cameras=False, export_lights=False)
-print('wrote', os.path.join(REPO, 'pod.glb'))
+print('wrote', GLB)

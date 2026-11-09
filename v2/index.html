@@ -30,7 +30,7 @@ a{color:inherit}
 .wrap{max-width:1240px;margin:0 auto;padding:0 16px}
 @media (min-width:768px){.wrap{padding:0 32px}}
 .mono{font-family:var(--mono)}
-.label{font:500 12px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.label{font:500 13px/1.4 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 [hidden]{display:none!important}
 
@@ -62,7 +62,7 @@ a{color:inherit}
 .sw i{width:30px;height:30px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
 .sw input:checked+label i{box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--ink)}
 .sw input:focus-visible+label i{outline:2px solid var(--accent);outline-offset:4px}
-.sw small{font:400 10px var(--mono);color:var(--muted)}
+.sw small{font:400 11px var(--mono);color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips input{position:absolute;opacity:0;pointer-events:none}
 .chips label{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--line-2);border-radius:3px;font-size:14px;cursor:pointer;background:var(--card)}
@@ -92,7 +92,6 @@ a{color:inherit}
 .hero-fig{position:relative;order:-1}
 @media (min-width:960px){.hero-fig{order:0}}
 .hero-fig img{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;object-position:50% 62%;mix-blend-mode:multiply;transition:opacity .25s}
-.hero-fig img.photo{object-fit:contain;object-position:50% 50%}
 .hero-fig img.swap{opacity:.35}
 .hero-fig figcaption{position:absolute;left:0;bottom:4px;font:400 12px var(--mono);color:var(--muted)}
 
@@ -114,24 +113,30 @@ section.dark .viewer{outline:1px solid var(--line-dark)}
 /* ---------- configurator */
 .build{display:grid;gap:20px}
 @media (min-width:1024px){.build{grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:32px;align-items:start}}
-.viewer{position:relative;width:100%;background:var(--stage);aspect-ratio:1;border-radius:4px;overflow:hidden}
+.viewer{position:relative;width:100%;background:var(--stage);aspect-ratio:4/5;border-radius:4px;overflow:hidden}
 @media (min-width:640px){.viewer{aspect-ratio:4/3.2}}
 @media (min-width:1024px){.viewer{position:sticky;top:76px;aspect-ratio:auto;height:calc(100vh - 100px);max-height:760px}}
 .viewer canvas{display:block;width:100%;height:100%;opacity:0;transition:opacity .4s}
 .viewer.ready canvas{opacity:1}
 .viewer .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply;transition:opacity .4s}
 .viewer.ready .poster,.viewer.ready .vload{opacity:0;pointer-events:none}
-.vload{position:absolute;left:50%;top:14px;transform:translateX(-50%);font:400 12px var(--mono);color:var(--muted);transition:opacity .4s}
-.badge{position:absolute;left:12px;top:12px;font:500 11px var(--mono);letter-spacing:.05em;color:var(--ink-2);background:var(--card);border:1px solid var(--line);padding:4px 8px;border-radius:2px}
-.vhint{position:absolute;right:12px;top:12px;font:400 12px var(--mono);color:var(--muted)}
-@media (max-width:520px){.vhint{display:none}}
-.vbar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
-.vbar button,.spots button{height:38px;padding:0 12px;border:1px solid var(--line-2);background:var(--card);border-radius:3px;font-size:14px;cursor:pointer}
-.vbar button[aria-pressed="true"],.spots button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
-.vbar .seg2{display:flex} .vbar .seg2 button{border-radius:0} .vbar .seg2 button:first-child{border-radius:3px 0 0 3px} .vbar .seg2 button:last-child{border-radius:0 3px 3px 0;border-left:0}
-.vbar .ar{margin-left:auto;border-color:var(--accent);color:var(--accent);font-weight:500}
-.spots{position:absolute;left:12px;right:12px;bottom:58px;display:flex;flex-wrap:wrap;gap:6px}
-.spots[hidden]{display:none}
+.viewer.ready.busy .vload{opacity:1}
+.vload{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:500 13px var(--mono);color:var(--ink-2);background:var(--card);padding:6px 10px;border-radius:3px;transition:opacity .4s}
+.vtop{position:absolute;left:12px;right:12px;top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+.mode{display:inline-flex;gap:2px;background:var(--card);border:1px solid var(--line-2);border-radius:4px;padding:3px}
+.mode button{height:36px;padding:0 14px;border:0;background:none;color:var(--ink);font-weight:500;font-size:15px;border-radius:3px;cursor:pointer}
+.mode button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.badge{font:500 12px var(--mono);color:var(--ink);background:var(--card);border:1px solid var(--line-2);padding:6px 9px;border-radius:3px;white-space:nowrap}
+.vbar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vbar button{height:40px;padding:0 14px;border:1px solid var(--line-2);background:var(--card);color:var(--ink);border-radius:3px;font-size:15px;font-weight:500;cursor:pointer}
+.vbar button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.vbar .lbl{font:500 12px var(--mono);color:var(--ink-2);background:var(--card);border:1px solid var(--line);padding:0 10px;height:40px;display:inline-flex;align-items:center;border-radius:3px}
+.vbar .end{margin-left:auto}
+.vbar .ar{background:var(--accent);border-color:var(--accent);color:#fff}
+.vhint{font:500 12px var(--mono);color:var(--ink-2);background:rgba(255,255,255,.85);padding:6px 9px;border-radius:3px}
+@media (max-width:560px){.vhint{display:none}}
+
+/* ---------- panel */
 .panel{display:grid;gap:0;background:var(--card);border:1px solid var(--line);border-radius:4px}
 .panel fieldset{border:0;border-bottom:1px solid var(--line);padding:18px 18px 20px;display:grid;gap:10px;min-width:0}
 .panel legend{float:left;width:100%;display:flex;justify-content:space-between;align-items:baseline;font-weight:700;margin-bottom:10px}
@@ -165,10 +170,17 @@ section.dark .viewer{outline:1px solid var(--line-dark)}
 .spec{list-style:none;display:grid;gap:0;font-size:14px}
 .spec li{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
 .spec li span:last-child{font-family:var(--mono);text-align:right}
-.arcard{margin-top:16px;padding:16px;border:1px solid var(--accent);border-radius:4px;display:grid;gap:10px}
-.arcard b{font-size:16px}
-.arcard p{font-size:14px;color:var(--ink-2)}
-.arcard .btn{background:var(--accent);border-color:var(--accent)}
+.arcard{margin-top:16px;padding:18px;background:var(--card);border:1px solid var(--line-2);border-left:3px solid var(--accent);border-radius:4px;display:grid;gap:10px}
+.arcard b{font-size:17px}
+.arcard p{font-size:15px;color:var(--ink-2)}
+.arcard .btn{justify-self:start}
+dialog{margin:auto;border:0;border-radius:6px;padding:0;max-width:min(360px,calc(100% - 32px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(17,20,23,.55)}
+dialog form{display:grid;gap:14px;padding:24px;text-align:center}
+dialog b{font-size:18px}
+dialog p{font-size:14px;color:var(--ink-2)}
+.qr{display:grid;place-items:center;min-height:216px}
+.qr svg{width:216px;height:216px}
 
 /* ---------- table */
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:4px;background:var(--card)}
@@ -238,7 +250,7 @@ footer ul{list-style:none;display:grid;gap:4px}
       </div>
       <div class="cta">
         <a class="btn" href="#" data-wa><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.3-.4.8-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.7 2.6 4.1 3.6 1.5.7 2.1.7 2.9.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3Z"/></svg>WhatsApp 報價</a>
-        <a class="btn ghost" href="#build" id="goInside">3D 坐入去睇</a>
+        <a class="btn ghost" href="#build" id="goInside">3D 入內睇</a>
       </div>
       <div class="facts" aria-label="主要數字">
         <div><b>25 dB</b><span>隔音量</span></div>
@@ -257,31 +269,38 @@ footer ul{list-style:none;display:grid;gap:4px}
 <section class="sec dark" id="build" aria-labelledby="h-build">
   <div class="wrap">
     <div class="head"><div><p class="label">01 · 3D 配置</p><h2 id="h-build">揀好配置，<br>WhatsApp 一撳就問。</h2></div>
-      <p>轉一圈睇外面，或者坐入去睇吓坐喺入面嘅感覺。揀好尺寸、顏色同加配，我哋會照住呢份配置報價。</p></div>
+      <p>「外觀」可以轉一圈睇；「入內睇」會帶你行入去坐低。揀好尺寸、顏色同加配，我哋會照住呢份配置報價。</p></div>
     <div class="build">
-      <div class="viewer" id="viewer">
-        <img class="poster" src="img/pod4-white.jpg" alt="" aria-hidden="true">
-        <canvas role="img" aria-label="Soundbox 4人靜音艙 3D 模型，可以拖動旋轉"></canvas>
-        <span class="badge">3D 模型 · 4人款</span>
-        <p class="vhint" id="vhint">拖動轉角度 · 滾輪或兩指縮放</p>
+      <div class="viewer" id="viewer" data-size="4">
+        <img class="poster" id="vPoster" src="img/pod4-white.jpg" alt="" aria-hidden="true">
+        <canvas role="img" aria-label="Soundbox 3D 模型，可以拖動旋轉"></canvas>
         <p class="vload" id="vload">載入 3D 模型…</p>
-        <div class="spots" id="spots" hidden role="group" aria-label="入面嘅位置">
-          <button type="button" data-spot="seat" aria-pressed="true">坐梳化</button>
-          <button type="button" data-spot="door" aria-pressed="false">企門口</button>
+        <div class="vtop">
+          <div class="mode" role="group" aria-label="視角">
+            <button type="button" id="vOut" aria-pressed="true">外觀</button>
+            <button type="button" id="vIn" aria-pressed="false">入內睇</button>
+          </div>
+          <span class="badge" id="vBadge">3D · 4人款</span>
+        </div>
+        <div class="vbar" id="barOut">
+          <button type="button" id="vDoor">開門</button>
+          <button type="button" id="vLight">熄燈</button>
+          <span class="vhint">拖動旋轉 · 滾輪縮放</span>
+          <button type="button" class="ar end" data-ar hidden>AR 擺喺你 office</button>
+        </div>
+        <div class="vbar" id="barIn" hidden>
+          <span class="lbl">位置</span>
+          <button type="button" data-spot="seat" aria-pressed="true">坐低</button>
+          <button type="button" data-spot="door" aria-pressed="false">門口</button>
           <button type="button" data-spot="out" aria-pressed="false">望出去</button>
           <button type="button" id="vGyro" aria-pressed="false" hidden>郁手機睇</button>
-        </div>
-        <div class="vbar">
-          <div class="seg2" role="group" aria-label="視角"><button type="button" id="vOut" aria-pressed="true">外面睇</button><button type="button" id="vIn" aria-pressed="false">坐入去睇</button></div>
-          <button type="button" id="vDoor" aria-pressed="false">開門</button>
-          <button type="button" id="vLight" aria-pressed="true">燈</button>
-          <button type="button" class="ar" data-ar hidden>AR 擺喺你 office</button>
+          <button type="button" class="end" id="vBack">↩ 返出去</button>
         </div>
       </div>
 
       <form class="panel" id="cfg" onsubmit="return false">
         <fieldset><legend>尺寸 <span class="label">Size</span></legend>
-          <div class="choice seg" data-group="size"></div><p class="meta" data-meta></p><p class="note" data-modelnote hidden>3D 模型示範用 4人款，其他尺寸以官方資料為準。</p></fieldset>
+          <div class="choice seg" data-group="size"></div><p class="meta" data-meta></p></fieldset>
         <fieldset><legend>顏色 <span class="label">Colour</span></legend><div class="choice sw" data-group="colour"></div></fieldset>
         <fieldset><legend>隨艙傢俬 <span class="label">Included</span></legend><ul class="furn" id="furn"></ul>
           <div class="chips" id="standWrap"><input type="checkbox" id="stand"><label for="stand">加 SJ-01 顯示支架（選購）</label></div></fieldset>
@@ -306,8 +325,15 @@ footer ul{list-style:none;display:grid;gap:4px}
       <div class="draw"><p class="label">正面 · Front</p><div id="dFront"></div></div>
       <div>
         <ul class="spec" id="spec"></ul>
-        <div class="arcard"><b>AR：原大擺喺你 office</b><p id="arText">用手機打開呢頁，就可以透過鏡頭將 4人款原大放喺你 office，睇吓位夠唔夠、行唔行得過。</p>
-          <button type="button" class="btn" data-ar hidden>開 AR 睇吓</button></div>
+        <div class="arcard"><b>擺喺你 office 睇吓</b>
+          <p>用手機鏡頭將原大嘅<span data-name></span>放喺你 office，睇吓位夠唔夠、行唔行得過。</p>
+          <button type="button" class="btn" id="arBtn">用手機開 AR</button></div>
+        <dialog id="qrDlg" aria-labelledby="qrTitle"><form method="dialog">
+          <b id="qrTitle">用手機掃一掃</b>
+          <div class="qr" id="qrBox" aria-label="QR code"></div>
+          <p>用手機相機掃呢個 QR code，打開後撳「開 AR」，就可以將<span data-name></span>原大擺喺你 office。</p>
+          <button class="btn ghost" value="close">關閉</button>
+        </form></dialog>
       </div>
     </div>
   </div>
@@ -366,17 +392,17 @@ footer ul{list-style:none;display:grid;gap:4px}
 (function () {
 'use strict';
 var WA = '85246780950';
-var IMG = 'https://sb.contex.com.hk/wp-content/themes/soundbox-child/asset/images/product/';
+var glb = function (n) { return new URL(n === '4' ? '../pod.glb' : '../pod-' + n + '.glb', location.href).href; };
 var SIZES = [
-  { id: '1', name: '1人款', w: 100, d: 93.6, h: 230, iw: 84, id_: 90, ih: 214, kg: 279, net: 235, img: 2, panes: 1,
+  { id: '1', name: '1人款', w: 100, d: 93.6, h: 230, iw: 84, id_: 90, ih: 214, kg: 279, net: 235, panes: 1,
     furn: [['ST-01 掛牆書枱', '×1'], ['SY-01 高腳凳', '×1']], ac: false, stand: false },
-  { id: '2', name: '2人款', w: 150, d: 123.6, h: 230, iw: 134, id_: 120, ih: 214, kg: 450, net: 390, img: 3, panes: 2,
+  { id: '2', name: '2人款', w: 150, d: 123.6, h: 230, iw: 134, id_: 120, ih: 214, kg: 450, net: 390, panes: 2,
     furn: [['ST-04 辦公桌', '×1'], ['SY-02 辦公椅', '×1']], alt: '亦有 ST-03 壁掛桌 + 高腳椅、角几 + 角凳配置', ac: true, stand: false },
-  { id: '4', name: '4人款', w: 220, d: 153.6, h: 230, iw: 204, id_: 150, ih: 214, kg: 648, net: 596, img: 4, panes: 3,
+  { id: '4', name: '4人款', w: 220, d: 153.6, h: 230, iw: 204, id_: 150, ih: 214, kg: 648, net: 596, panes: 3,
     furn: [['ST-05 電腦枱', '×1'], ['SY-05 梳化 (L/R)', '×2']], ac: true, stand: true, model: true },
-  { id: '6', name: '6人款', w: 220, d: 213.6, h: 230, iw: 204, id_: 210, ih: 214, kg: 790, net: 721, img: 5, panes: 3,
+  { id: '6', name: '6人款', w: 220, d: 213.6, h: 230, iw: 204, id_: 210, ih: 214, kg: 790, net: 721, panes: 3,
     furn: [['ST-06 電腦枱', '×1'], ['SY-06 梳化 (L/R)', '×2']], ac: true, stand: true },
-  { id: '8', name: '8人款', w: 300, d: 423.6, h: 234.6, iw: 284, id_: 420, ih: 214, kg: 1580, net: 1442, img: 9, panes: 3,
+  { id: '8', name: '8人款', w: 300, d: 423.6, h: 234.6, iw: 284, id_: 420, ih: 214, kg: 1580, net: 1442, panes: 3,
     furn: [['ST-10 會議桌', '×1'], ['SY-03 會議椅', '×8']], ac: true, stand: false }
 ];
 var COLOURS = [
@@ -468,7 +494,6 @@ function render() {
   $$('[data-meta]').forEach(function (m) { m.textContent = dims(s) + ' · ' + s.kg + ' kg'; });
   $$('[data-name]').forEach(function (m) { m.textContent = s.name; });
   $('[data-short]').textContent = s.name + ' · ' + c.name;
-  $('[data-modelnote]').hidden = !!s.model;
   $('#furn').innerHTML = s.furn.map(function (f) { return '<li><span>' + f[0] + '</span><span>' + f[1] + '</span></li>'; }).join('') +
     (s.alt ? '<li><span class="note">' + s.alt + '</span><span></span></li>' : '');
   $('#standWrap').hidden = !s.stand;
@@ -478,14 +503,14 @@ function render() {
   var href = 'https://wa.me/' + WA + '?text=' + encodeURIComponent(msg);
   $$('[data-wa]').forEach(function (a) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; });
   // hero image: our renders for the modelled 4-person pod, Contex's photos for the rest
-  var src = s.model ? 'img/pod4-' + c.id + '.jpg' : IMG + s.img + '/1.jpg';
+  var src = 'img/pod' + s.id + '-' + c.id + '.jpg';   // Blender renders, one per size x colour
   if (src !== lastHero) {
-    var img = $('#heroImg'); img.classList.add('swap'); img.classList.toggle('photo', !s.model);
+    var img = $('#heroImg'); img.classList.add('swap');
     var pre = new Image(); pre.onload = pre.onerror = function () { img.src = src; img.classList.remove('swap'); }; pre.src = src;
-    img.alt = 'Soundbox ' + s.name + (s.model ? '，' + c.name : '');
+    img.alt = 'Soundbox ' + s.name + '，' + c.name;
     lastHero = src;
   }
-  $('#heroCap').textContent = s.name + (s.model ? ' · ' + c.name + ' ' + c.code + ' · 3D 渲染' : ' · 官方相片 · 顏色可揀 5 款');
+  $('#heroCap').textContent = s.name + ' · ' + c.name + ' ' + c.code + ' · 3D 渲染';
   $('#spec').innerHTML = [['外尺寸', dims(s)], ['內尺寸', 'W' + s.iw + ' × D' + s.id_ + ' × H' + s.ih + ' cm'], ['重量', s.kg + ' kg（淨 ' + s.net + ' kg）'],
     ['電源', '一個插位 · 100–240V'], ['底部空隙', '8 mm · 阻尼腳墊'], ['安裝', '專人上門 · 一日內']]
     .map(function (r) { return '<li><span>' + r[0] + '</span><span>' + r[1] + '</span></li>'; }).join('');
@@ -493,9 +518,20 @@ function render() {
     return '<tr data-id="' + x.id + '"' + (x === s ? ' class="on" aria-current="true"' : '') + '><td><b>' + x.name + '</b></td><td class="n">' + x.w + ' × ' + x.d + ' × ' + x.h +
       '</td><td class="n">' + x.iw + ' × ' + x.id_ + ' × ' + x.ih + '</td><td class="n">' + x.kg + ' kg</td><td>' + x.furn.map(function (f) { return f[0] + ' ' + f[1]; }).join('、') + '</td></tr>';
   }).join('');
-  $('#arText').textContent = (AR_OK ? '撳下面個掣，' : '用手機打開呢頁，就可以') + '透過鏡頭將 4人款原大放喺你 office，睇吓位夠唔夠、行唔行得過。';
+  $('#arBtn').textContent = touch ? '開 AR' : '用手機開 AR';
+  $('#vBadge').textContent = '3D · ' + s.name;
+  if (!window.__v2pod) { V.dataset.size = s.id; $('#vPoster').src = 'img/pod' + s.id + '-white.jpg'; }
+  if (mv && mv.getAttribute('src') !== glb(s.id)) mv.setAttribute('src', glb(s.id));
+  history.replaceState(null, '', '?size=' + s.id + '&colour=' + c.id + location.hash);
   drawings(s);
-  if (window.__v2pod) window.__v2pod.setColour(c.hex);
+  if (window.__v2pod) {
+    window.__v2pod.setColour(c.hex);
+    if (window.__v2pod.size !== s.id) {
+      setInside(false); doorOpen = false; syncToggles();
+      $('#vload').textContent = '載入緊' + s.name + '…'; V.classList.add('busy');
+      window.__v2pod.setSize(s.id).then(function () { seatLabel(); if (window.__v2pod.size === S.size.id) V.classList.remove('busy'); });
+    }
+  }
 }
 
 // ---------- 3D viewer (loaded when the section gets close)
@@ -516,18 +552,24 @@ function loadViewer() {
 new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { loadViewer(); io.disconnect(); } }, { rootMargin: '700px' }).observe(V);
 
 function press(btn, on) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+var doorOpen = false, lightOn = true;
+function syncToggles() { $('#vDoor').textContent = doorOpen ? '閂門' : '開門'; $('#vLight').textContent = lightOn ? '熄燈' : '開燈'; }
+function spotPress(id) { $$('#barIn [data-spot]').forEach(function (b) { press(b, b.dataset.spot === id); }); }
+function seatLabel() { if (window.__v2pod) $('#barIn [data-spot="seat"]').textContent = window.__v2pod.spots.seatLabel; }
 function setInside(on) {
   press($('#vIn'), on); press($('#vOut'), !on);
-  $('#spots').hidden = !on;
-  $('#vhint').textContent = on ? '拖動四圍望' : '拖動轉角度 · 滾輪或兩指縮放';
-  if (on) press($('#vDoor'), true);
+  $('#barIn').hidden = !on; $('#barOut').hidden = on;
+  if (on) { doorOpen = true; lightOn = true; syncToggles(); }
 }
-$('#vIn').addEventListener('click', function () { loadViewer().then(function (p) { setInside(true); spotPress('seat'); p.enter('seat'); }); });
-$('#vOut').addEventListener('click', function () { loadViewer().then(function (p) { setInside(false); press($('#vGyro'), false); p.exit().then(function () { press($('#vDoor'), false); }); }); });
-function spotPress(id) { $$('#spots [data-spot]').forEach(function (b) { press(b, b.dataset.spot === id); }); }
-$$('#spots [data-spot]').forEach(function (b) { b.addEventListener('click', function () { spotPress(b.dataset.spot); press($('#vGyro'), false); window.__v2pod.enter(b.dataset.spot); }); });
-$('#vDoor').addEventListener('click', function () { var on = this.getAttribute('aria-pressed') !== 'true'; press(this, on); loadViewer().then(function (p) { p.setDoor(on); }); });
-$('#vLight').addEventListener('click', function () { var on = this.getAttribute('aria-pressed') !== 'true'; press(this, on); loadViewer().then(function (p) { p.setLight(on); }); });
+function goIn(spot) { loadViewer().then(function (p) { setInside(true); spotPress(spot); press($('#vGyro'), false); p.enter(spot); }); }
+function goOut() { loadViewer().then(function (p) { setInside(false); press($('#vGyro'), false); p.exit().then(function () { doorOpen = false; syncToggles(); }); }); }
+V.addEventListener('viewer-ready', seatLabel);
+$('#vIn').addEventListener('click', function () { if (!window.__v2pod || !window.__v2pod.inside) goIn('seat'); });
+$('#vOut').addEventListener('click', goOut);
+$('#vBack').addEventListener('click', goOut);
+$$('#barIn [data-spot]').forEach(function (b) { b.addEventListener('click', function () { goIn(b.dataset.spot); }); });
+$('#vDoor').addEventListener('click', function () { doorOpen = !doorOpen; syncToggles(); loadViewer().then(function (p) { p.setDoor(doorOpen); }); });
+$('#vLight').addEventListener('click', function () { lightOn = !lightOn; syncToggles(); loadViewer().then(function (p) { p.setLight(lightOn); }); });
 if (touch && 'DeviceOrientationEvent' in window) {
   $('#vGyro').hidden = false;
   $('#vGyro').addEventListener('click', function () {
@@ -535,7 +577,7 @@ if (touch && 'DeviceOrientationEvent' in window) {
     window.__v2pod.gyro(on).then(function (res) { press(btn, res); if (on && !res) toast('呢部機未能用陀螺儀，可以用手指拖動。'); });
   });
 }
-$('#goInside').addEventListener('click', function () { loadViewer().then(function (p) { setTimeout(function () { setInside(true); spotPress('seat'); p.enter('seat'); }, 500); }); });
+$('#goInside').addEventListener('click', function () { setTimeout(function () { goIn('seat'); }, 450); });
 
 // ---------- AR (phones only): model-viewer hands the same GLB to Scene Viewer / Quick Look at true scale
 var AR_OK = false, mv = null;
@@ -543,26 +585,46 @@ function prepAR() {
   if (!touch || prepAR.done) return; prepAR.done = true;
   import('https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js').then(function () {
     mv = document.createElement('model-viewer');
-    [['src', new URL('../pod.glb', location.href).href], ['ar', ''], ['ar-modes', 'webxr scene-viewer quick-look'], ['ar-scale', 'fixed'], ['loading', 'eager'], ['alt', 'Soundbox 4人靜音艙']]
+    [['src', glb(S.size.id)], ['ar', ''], ['ar-modes', 'webxr scene-viewer quick-look'], ['ar-scale', 'fixed'], ['loading', 'eager'], ['alt', 'Soundbox 靜音艙']]
       .forEach(function (a) { mv.setAttribute(a[0], a[1]); });
     mv.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none';
     document.body.appendChild(mv);
-    mv.addEventListener('load', function () { AR_OK = mv.canActivateAR; $$('[data-ar]').forEach(function (b) { b.hidden = !AR_OK; }); render(); });
+    mv.addEventListener('load', function () { AR_OK = mv.canActivateAR; $$('[data-ar]').forEach(function (b) { b.hidden = !AR_OK; }); });
   }).catch(function () {});
 }
 ['#build', '#fit'].forEach(function (s) { new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { prepAR(); io.disconnect(); } }, { rootMargin: '600px' }).observe($(s)); });
-$$('[data-ar]').forEach(function (b) {
-  b.addEventListener('click', function () {
-    if (!AR_OK) return toast('呢部機唔支援 AR。');
-    var m = mv.model && mv.model.materials.filter(function (x) { return x.name === 'Shell'; })[0];
-    if (m) m.pbrMetallicRoughness.setBaseColorFactor(S.colour.hex);
-    mv.activateAR();
-  });
+function startAR() {
+  if (!AR_OK) return toast(mv ? '呢部手機唔支援 AR。' : 'AR 準備緊，請等一等再撳。');
+  var m = mv.model && mv.model.materials.filter(function (x) { return x.name === 'Shell'; })[0];
+  if (m) m.pbrMetallicRoughness.setBaseColorFactor(S.colour.hex);
+  mv.activateAR();
+}
+$$('[data-ar]').forEach(function (b) { b.addEventListener('click', startAR); });
+// computers: a QR code (in a pop-up, only when asked) opens this page on the phone with the same size + colour
+$('#arBtn').addEventListener('click', function () {
+  if (touch) return startAR();
+  var url = location.origin + location.pathname + '?size=' + S.size.id + '&colour=' + S.colour.id + '&ar=1#fit';
+  var draw = function () { var q = qrcode(0, 'M'); q.addData(url); q.make(); $('#qrBox').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); };
+  $('#qrDlg').showModal();
+  if (window.qrcode) return draw();
+  $('#qrBox').textContent = '載入緊…';
+  var sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  sc.onload = draw; sc.onerror = function () { $('#qrBox').textContent = '未能產生 QR code，請直接喺手機打開呢頁。'; };
+  document.head.appendChild(sc);
 });
+$('#qrDlg').addEventListener('click', function (e) { if (e.target === this) this.close(); });   // click outside closes
+
+// deep link: ?size=6&colour=green (the QR code and the address bar keep these)
+(function () {
+  var q = new URLSearchParams(location.search);
+  S.size = SIZES.filter(function (x) { return x.id === q.get('size'); })[0] || S.size;
+  S.colour = COLOURS.filter(function (x) { return x.id === q.get('colour'); })[0] || S.colour;
+  if (q.get('ar') === '1' && touch) setTimeout(function () { $('#fit').scrollIntoView({ behavior: 'smooth' }); }, 300);
+})();
 
 render();
 // warm the other colour renders once the page is idle
-(window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod4-' + c.id + '.jpg'; }); });
+(window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
 })();
 </script>
 </body>

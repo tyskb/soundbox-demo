@@ -5,7 +5,7 @@
 
 Writes blender/renders/<shot>.png. Only touches the scene in memory; the .blend is not saved.
 """
-import bpy, math, os
+import bpy, json, math, os
 import numpy as np
 from mathutils import Vector
 
@@ -67,12 +67,13 @@ for i, c in enumerate([(1, .54, .24), (.18, .76, .49), (1, .83, .23), (.9, .29, 
     ui[y0 - 160:y0, x0:x0 + 155, :3] = c
 scr_img = bpy.data.images.new('screen_ui', W_, H_)
 scr_img.pixels.foreach_set(ui.ravel())
-mt = bpy.data.materials['Screen'].node_tree
-tex = mt.nodes.new('ShaderNodeTexImage'); tex.image = scr_img
-s = bsdf('Screen')
-mt.links.new(tex.outputs['Color'], s.inputs['Base Color'])
-mt.links.new(tex.outputs['Color'], s.inputs['Emission Color'])
-s.inputs['Emission Strength'].default_value = 1.4
+if 'Screen' in bpy.data.materials:   # only the pods with a display stand
+    mt = bpy.data.materials['Screen'].node_tree
+    tex = mt.nodes.new('ShaderNodeTexImage'); tex.image = scr_img
+    s = bsdf('Screen')
+    mt.links.new(tex.outputs['Color'], s.inputs['Base Color'])
+    mt.links.new(tex.outputs['Color'], s.inputs['Emission Color'])
+    s.inputs['Emission Strength'].default_value = 1.4
 
 # ---------- studio ----------
 world = bpy.data.worlds.new('Studio'); sc.world = world
@@ -98,7 +99,11 @@ area('Key', (-4.0, -5.0, 5.0), 5.0, 2600)
 area('Fill', (5.5, -3.5, 2.5), 4.0, 1300)
 area('Top', (0, 0.5, 6.5), 6.0, 1200, sy=4.0)
 area('Rim', (1.0, 6.0, 4.0), 4.0, 900)
-inside = area('Inside', (0.0, 0.0, 2.08), 1.7, 380, (1.0, 0.93, 0.84), target=(0, 0, 0), sy=1.1)   # 4000K ceiling light
+POD = json.loads(bpy.data.objects['Soundbox4']['pod'])          # size written by build_pod.py
+PW, PD, PH = POD['w'], POD['d'], POD['h']
+iw, idp = PW - 0.2, PD - 0.15
+inside = area('Inside', (0.0, 0.0, PH - 0.22), 1.7 * iw / 2.0, 380 * (iw * idp) / (2.0 * 1.39), (1.0, 0.93, 0.84),
+              target=(0, 0, 0), sy=0.79 * idp)   # 4000K ceiling light, scaled to the interior
 
 # ---------- camera + shots ----------
 cam = bpy.data.objects.new('Cam', bpy.data.cameras.new('Cam')); sc.collection.objects.link(cam); sc.camera = cam
@@ -110,12 +115,26 @@ SHOTS = {   # name: (yaw from the front, deg; +ve = towards the right/Contex sid
     'side_logo': (58, 8.2, 1.6),
 }
 only = os.environ.get('SHOT')
+if only == 'inside':   # the web viewer's 'sit down' spot (three.js x, y-up, z=-Blender y), wide lens
+    (px, py, pz), (lx, ly, lz) = POD['spots']['seat']
+    cam.location = Vector((px, -pz, py))
+    cam.rotation_euler = (Vector((lx, -lz, ly)) - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    cam.data.lens = 16
+    sc.render.resolution_y = int(sc.render.resolution_x * 0.75)
+    sc.render.filepath = os.path.join(OUT, f'inside{TAG}.png')
+    sc.render.film_transparent = False
+    bpy.ops.render.render(write_still=True)
+    print('rendered inside')
+    raise SystemExit
 for name, (yaw, dist, hgt) in SHOTS.items():
     if only and name != only:
         continue
-    target = Vector((0.0, 0.0, 1.13))
     a = math.radians(yaw)
-    cam.location = target + Vector((math.sin(a) * dist, -math.cos(a) * dist, hgt - target.z))
+    seen_w = PW * abs(math.cos(a)) + PD * abs(math.sin(a))          # width the camera sees at this angle
+    k = max(3.6 * PH, 2.3 * seen_w) / 8.4                            # ~1.0 for the 4-person hero shot
+    dist *= k
+    target = Vector((0.0, 0.0, 0.49 * PH))
+    cam.location = target + Vector((math.sin(a) * dist, -math.cos(a) * dist, (hgt - 1.13) * k))
     cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
     raw = os.path.join(OUT, f'_{name}{TAG}_rgba.png')
     sc.render.filepath = raw
