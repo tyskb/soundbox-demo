@@ -335,7 +335,7 @@ footer ul{list-style:none;display:grid;gap:4px}
       <div>
         <ul class="spec" id="spec"></ul>
         <div class="arcard"><b>擺喺你 office 睇吓</b>
-          <p>用手機鏡頭將原大嘅<span data-name></span>放喺你 office，睇吓位夠唔夠、行唔行得過。</p>
+          <p>用手機鏡頭將原大嘅<span data-name></span>放喺你 office，睇吓位夠唔夠、行唔行得過。AR 以霧面白示範。</p>
           <button type="button" class="btn" id="arBtn">用手機開 AR</button></div>
         <dialog id="qrDlg" aria-labelledby="qrTitle"><form method="dialog">
           <b id="qrTitle">用手機掃一掃</b>
@@ -533,7 +533,7 @@ function render() {
   $('#arBtn').textContent = touch ? '開 AR' : '用手機開 AR';
   $('#vBadge').textContent = '3D · ' + s.name;
   if (!window.__v2pod) { V.dataset.size = s.id; $('#vPoster').src = 'img/inside' + s.id + '.jpg'; }
-  if (mv && mv.getAttribute('src') !== glb(s.id)) mv.setAttribute('src', glb(s.id));
+  if (mv && mv.getAttribute('src') !== glb(s.id)) { mv.setAttribute('src', glb(s.id)); mv.setAttribute('ios-src', usdz(s.id)); }
   history.replaceState(null, '', '?size=' + s.id + '&colour=' + c.id + location.hash);
   drawings(s);
   if (window.__v2pod) {
@@ -612,24 +612,29 @@ $('#vDoor').addEventListener('click', function () { doorOpen = !doorOpen; syncTo
 $('#vLight').addEventListener('click', function () { lightOn = !lightOn; syncToggles(); loadViewer().then(function (p) { p.setLight(lightOn); }); });
 $('#goInside').addEventListener('click', function () { askMotion(); setTimeout(function () { goIn('seat'); }, 450); });
 
-// ---------- AR (phones only): model-viewer hands the same GLB to Scene Viewer / Quick Look at true scale
+// ---------- AR (phones only): native viewers at true scale — Android: Scene Viewer with the GLB,
+// iPhone: Quick Look with a USDZ exported from Blender (v2/ar). model-viewer only builds the hand-off;
+// it never loads or shows the model itself, so nothing waits for a 'load' event.
 var AR_OK = false, mv = null;
+var usdz = function (n) { return new URL('ar/pod-' + n + '.usdz', location.href).href; };
+function arState() { AR_OK = !!(mv && mv.canActivateAR); $$('[data-ar]').forEach(function (b) { b.hidden = !AR_OK; }); }
 function prepAR() {
   if (!touch || prepAR.done) return; prepAR.done = true;
   import('https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js').then(function () {
+    return customElements.whenDefined('model-viewer');
+  }).then(function () {
     mv = document.createElement('model-viewer');
-    [['src', glb(S.size.id)], ['ar', ''], ['ar-modes', 'webxr scene-viewer quick-look'], ['ar-scale', 'fixed'], ['loading', 'eager'], ['alt', 'Soundbox 靜音艙']]
-      .forEach(function (a) { mv.setAttribute(a[0], a[1]); });
-    mv.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    [['src', glb(S.size.id)], ['ios-src', usdz(S.size.id)], ['ar', ''], ['ar-modes', 'scene-viewer quick-look'], ['ar-scale', 'fixed'],
+     ['loading', 'lazy'], ['reveal', 'manual'], ['alt', 'Soundbox 靜音艙']].forEach(function (a) { mv.setAttribute(a[0], a[1]); });
+    mv.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none';
     document.body.appendChild(mv);
-    mv.addEventListener('load', function () { AR_OK = mv.canActivateAR; $$('[data-ar]').forEach(function (b) { b.hidden = !AR_OK; }); });
+    [0, 400, 1500, 4000].forEach(function (t) { setTimeout(arState, t); });   // AR support settles just after the element upgrades
   }).catch(function () {});
 }
 ['#build', '#fit'].forEach(function (s) { new IntersectionObserver(function (es, io) { if (es[0].isIntersecting) { prepAR(); io.disconnect(); } }, { rootMargin: '600px' }).observe($(s)); });
 function startAR() {
-  if (!AR_OK) return toast(mv ? '呢部手機唔支援 AR。' : 'AR 準備緊，請等一等再撳。');
-  var m = mv.model && mv.model.materials.filter(function (x) { return x.name === 'Shell'; })[0];
-  if (m) m.pbrMetallicRoughness.setBaseColorFactor(S.colour.hex);
+  if (!mv) { prepAR(); return toast('AR 準備緊，請等一兩秒再撳。'); }
+  if (!mv.canActivateAR) return toast('呢部手機開唔到 AR（Android 要有 Google Play AR 服務，iPhone 要用 Safari 或 Chrome）。');
   mv.activateAR();
 }
 $$('[data-ar]').forEach(function (b) { b.addEventListener('click', startAR); });

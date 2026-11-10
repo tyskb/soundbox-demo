@@ -117,13 +117,19 @@ SHOTS = {   # name: (yaw from the front, deg; +ve = towards the right/Contex sid
 }
 only = os.environ.get('SHOT')
 
-def flatten(raw, path, bg, fix_shadow=True):
+def flatten(raw, path, bg, fix_shadow=True, edge_fade=False):
     """RGBA render -> opaque PNG on a flat backdrop (white like the product photos, black for masks)."""
     im = bpy.data.images.load(raw)
     px = np.array(im.pixels[:], np.float32).reshape(-1, 4)
     if fix_shadow:   # shadow-catcher pixels carry a ~20% haze over the whole floor; keep only the contact shadow
         shadow = px[:, :3].max(1) < 0.03
         px[shadow, 3] = np.clip((px[shadow, 3] - 0.3) / 0.7, 0, 1)
+        if edge_fade:   # long pods throw shadow past the frame: fade it out before the edges instead of cutting it
+            w, h = im.size
+            x = np.tile(np.arange(w) / (w - 1), h)
+            y = np.repeat(np.arange(h) / (h - 1), w)          # 0 = bottom row
+            fade = np.clip(np.minimum(x, 1 - x) / 0.14, 0, 1) * np.clip(y / 0.12, 0, 1)
+            px[shadow, 3] *= fade[shadow]
     rgb = px[:, :3] * px[:, 3:4] + bg * (1 - px[:, 3:4])
     out = bpy.data.images.new('flat', im.size[0], im.size[1], alpha=False)
     out.pixels.foreach_set(np.concatenate([rgb, np.ones_like(px[:, :1])], 1).ravel())
@@ -143,7 +149,7 @@ if only == 'spin':
     root = bpy.data.objects['Soundbox4']
     inside.parent = root                                                   # ceiling light turns with the pod
     a = math.radians(28)
-    k = max(3.6 * PH, 2.3 * math.hypot(PW, PD)) / 8.4                      # fits the widest angle too
+    k = max(3.6 * PH, 2.3 * math.hypot(PW, PD)) / 8.4 * (1.12 if PD > 2 else 1.0)   # fits the widest angle; room for long shadows
     target = Vector((0.0, 0.0, 0.49 * PH))
     cam.location = target + Vector((math.sin(a) * 8.4 * k, -math.cos(a) * 8.4 * k, 0.42 * k))
     cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
@@ -152,7 +158,7 @@ if only == 'spin':
         root.rotation_euler.z = 2 * math.pi * i / F                       # +index = turns anticlockwise from above
         sc.render.filepath = raw = os.path.join(sdir, f'_{i:02d}.png')
         bpy.ops.render.render(write_still=True)
-        flatten(raw, os.path.join(sdir, f'{i:02d}.png'), BG)
+        flatten(raw, os.path.join(sdir, f'{i:02d}.png'), BG, edge_fade=True)
     for m in bpy.data.materials:                                           # mask pass
         if not m.node_tree:
             continue
