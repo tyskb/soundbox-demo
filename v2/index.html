@@ -513,7 +513,7 @@ function render() {
   var href = 'https://wa.me/' + WA + '?text=' + encodeURIComponent(msg);
   $$('[data-wa]').forEach(function (a) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; });
   // hero image: our renders for the modelled 4-person pod, Contex's photos for the rest
-  // 360 turntable when WebGL is there (frame 0 underneath as the first paint), else the per-colour stills
+  // 360 turntable (WebGL, or 2D canvas without a GPU; frame 0 underneath as the first paint), else the per-colour stills
   var src = canSpin ? 'spin/' + s.id + '/00.jpg' : 'img/pod' + s.id + '-' + c.id + '.jpg';
   if (src !== lastHero) {
     var img = $('#heroImg'); img.classList.add('swap');
@@ -660,12 +660,12 @@ $('#qrDlg').addEventListener('click', function (e) { if (e.target === this) this
   if (q.get('ar') === '1' && touch) setTimeout(function () { $('#fit').scrollIntoView({ behavior: 'smooth' }); }, 300);
 })();
 
-var spin = null, canSpin = !!(window.Spin && window.WebGLRenderingContext);
+var spin = null, canSpin = !!window.Spin;
 render();
 // WebGL setup (~50-90 ms) waits until after the first paint; frame 0 is already showing as an <img>
 requestAnimationFrame(function () { setTimeout(function () {
   spin = canSpin ? window.Spin($('.hero-fig'), 'spin/') : null;
-  if (!spin) {   // no GPU: still renders per colour
+  if (!spin) {   // no canvas at all: still renders per colour
     canSpin = false;
     (window.requestIdleCallback || setTimeout)(function () { COLOURS.forEach(function (c) { new Image().src = 'img/pod' + S.size.id + '-' + c.id + '.jpg'; }); });
   }

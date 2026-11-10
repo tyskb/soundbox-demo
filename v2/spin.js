@@ -1,7 +1,7 @@
 // Hero 360°: a pre-rendered Cycles turntable (36 frames per size, blender/render_spin.sh) shown on a canvas.
 // Drag / swipe sideways to turn (vertical swipes still scroll), arrow keys step.
-// Each frame has a mask (red = shell, green = logo), so the shell colour is applied here on the GPU
-// instead of rendering 36 frames x 5 colours.
+// Each frame has a mask (red = shell, green = logo), so the shell colour is applied here
+// instead of rendering 36 frames x 5 colours (WebGL shader, or 2D canvas compositing when there is no GPU).
 // Feel: the pod follows the finger 1:1 with crisp single frames (easing lagged behind the finger and
 // blending neighbours ghosted). Frames are decoded off the main thread (createImageBitmap) and uploaded
 // to the GPU at most one per animation frame; turning then only swaps textures. The page colour is
@@ -31,30 +31,72 @@
   var WHITE = lin('#ecebe6');
 
   function Spin(fig, base) {
-    var canvas = document.createElement('canvas');
-    canvas.className = 'spin';
-    canvas.tabIndex = 0;
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', '360° 檢視：拖動或者用左右鍵轉');
+    function make() {
+      var c = document.createElement('canvas');
+      c.className = 'spin';
+      c.tabIndex = 0;
+      c.setAttribute('role', 'img');
+      c.setAttribute('aria-label', '360° 檢視：拖動或者用左右鍵轉');
+      return c;
+    }
+    var bgHex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#eeece6';
+    var bg = srgb(bgHex), uRatio, uLogo;
+    var canvas = make();
     var gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, failIfMajorPerformanceCaveat: true });
-    if (!gl) return null;   // no GPU (software WebGL would stutter): the page keeps the still images
-    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
-    if (dbg && /swiftshader|llvmpipe|software|basic render/i.test(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))) return null;
-    var prog = gl.createProgram();
-    [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, FS]].forEach(function (s) {
-      var sh = gl.createShader(s[0]); gl.shaderSource(sh, s[1]); gl.compileShader(sh); gl.attachShader(prog, sh);
-    });
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
-    gl.useProgram(prog);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    var loc = gl.getAttribLocation(prog, 'p');
-    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    ['uA', 'uMA'].forEach(function (n, u) { gl.uniform1i(gl.getUniformLocation(prog, n), u); });
-    var uRatio = gl.getUniformLocation(prog, 'uRatio'), uLogo = gl.getUniformLocation(prog, 'uLogo');
-    var bg = srgb(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#eeece6');
-    gl.uniform3f(gl.getUniformLocation(prog, 'uBg'), bg[0], bg[1], bg[2]);
+    // No hardware WebGL (Chrome with graphics acceleration off / GPU blocklisted / remote desktop, where Chrome
+    // no longer falls back to software WebGL): the same recolouring done with plain 2D canvas compositing.
+    if (!gl || !setupGL()) { gl = null; canvas = make(); }
+    var cx = gl ? null : canvas.getContext('2d', { alpha: false });
+    if (!gl && !cx) return null;   // nothing to draw with: the page keeps the still images
+    function setupGL() {
+      var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      if (dbg && /swiftshader|llvmpipe|software|basic render/i.test(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))) return false;
+      var prog = gl.createProgram();
+      [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, FS]].forEach(function (s) {
+        var sh = gl.createShader(s[0]); gl.shaderSource(sh, s[1]); gl.compileShader(sh); gl.attachShader(prog, sh);
+      });
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(prog, 'p');
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      ['uA', 'uMA'].forEach(function (n, u) { gl.uniform1i(gl.getUniformLocation(prog, n), u); });
+      uRatio = gl.getUniformLocation(prog, 'uRatio'); uLogo = gl.getUniformLocation(prog, 'uLogo');
+      gl.uniform3f(gl.getUniformLocation(prog, 'uBg'), bg[0], bg[1], bg[2]);
+      return true;
+    }
+
+    // ---- 2D path. Gamma is a power curve, so the shader's linear-space multiply is the same as an sRGB
+    // multiply by k^(1/2.2): base frame, then the shell tint ('multiply' through the red mask), the light logo,
+    // then the page colour. Masks are turned into alpha once, when a frame loads.
+    var tint = document.createElement('canvas'), tc = tint.getContext('2d');
+    function alphaMasks(bm) {   // red/green mask -> [shell, logo] canvases with that channel as alpha
+      var w = bm.width, h = bm.height, c = document.createElement('canvas'); c.width = w; c.height = h;
+      var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bm, 0, 0);
+      var src = x.getImageData(0, 0, w, h).data;
+      return [0, 1].map(function (ch) {
+        var out = x.createImageData(w, h), d = out.data;
+        for (var p = 0; p < d.length; p += 4) { d[p] = d[p + 1] = d[p + 2] = 255; d[p + 3] = src[p + ch]; }
+        var cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').putImageData(out, 0, 0);
+        return cv;
+      });
+    }
+    function layer(m, rgb, op) {
+      tint.width = m.width; tint.height = m.height;   // resets the tint canvas
+      tc.drawImage(m, 0, 0); tc.globalCompositeOperation = 'source-in';
+      tc.fillStyle = 'rgb(' + rgb.join(',') + ')'; tc.fillRect(0, 0, m.width, m.height);
+      cx.globalCompositeOperation = op; cx.drawImage(tint, 0, 0, canvas.width, canvas.height);
+    }
+    function paint(img, mk) {
+      var W = canvas.width, H = canvas.height;
+      cx.globalCompositeOperation = 'source-over'; cx.drawImage(img, 0, 0, W, H);
+      var k = colour.map(function (r) { return Math.round(255 * Math.pow(Math.min(1, r * 0.955 + 0.045), 1 / 2.2)); });
+      if (k.join() !== '255,255,255') layer(mk[0], k, 'multiply');
+      if (logo) layer(mk[1], [205, 205, 205], 'source-over');   // linear .62
+      cx.globalCompositeOperation = 'multiply'; cx.fillStyle = bgHex; cx.fillRect(0, 0, W, H);
+    }
 
     function texture(src) {
       var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
@@ -83,7 +125,8 @@
       pumping = 0;
       var u = uploads.shift(); if (!u) return;
       if (!u.set.dead) {
-        u.set.tex[u.i] = texture(u.bm[0]); u.set.mask[u.i] = texture(u.bm[1]);
+        if (gl) { u.set.tex[u.i] = texture(u.bm[0]); u.set.mask[u.i] = texture(u.bm[1]); }
+        else { u.set.tex[u.i] = u.bm[0]; u.set.mask[u.i] = alphaMasks(u.bm[1]); u.bm = [u.bm[1]]; }   // 2D keeps the frame bitmap
         if (++u.set.count === F && !nudged) { nudged = true; setTimeout(nudge, 400); }
         if (u.n === size) { if (!ready && u.i === 0) first(); else dirty = true; go(); }
       }
@@ -124,11 +167,11 @@
     function drop(n) {   // free the GPU memory of a size we left
       var set = sets[n]; if (!set) return;
       set.dead = true;
-      set.tex.concat(set.mask).forEach(function (t) { if (t) gl.deleteTexture(t); });
+      set.tex.concat(set.mask).forEach(function (t) { if (!t) return; if (gl) gl.deleteTexture(t); else if (t.close) t.close(); });
       delete sets[n];
     }
     var nudged = false;
-    function first() { ready = true; resize(); fig.classList.add('spinning'); }
+    function first() { ready = true; resize(); dirty = false; draw(); fig.classList.add('spinning'); }   // paint before showing: no blank-canvas flash
 
     function nearest(set, i) {   // closest frame already on the GPU
       for (var d = 0; d <= F / 2; d++) {
@@ -143,12 +186,13 @@
       var a = wrap(Math.round(pos));
       if (!set.tex[a]) a = nearest(set, a);           // still loading
       if (a < 0) return;
+      shown = a;
+      if (!gl) return paint(set.tex[a], set.mask[a]);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, set.tex[a]);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, set.mask[a]);
       gl.uniform3f(uRatio, colour[0], colour[1], colour[2]);
       gl.uniform1f(uLogo, logo);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      shown = a;
     }
     function tick() {   // follow the finger 1:1; redraw only when the frame (or colour/size) changes
       loop = 0;
@@ -160,7 +204,7 @@
       var w = Math.round(canvas.clientWidth * dpr);
       if (!w) return;
       var cw = Math.min(w, 1000);
-      if (cw !== canvas.width) { canvas.width = cw; canvas.height = Math.round(cw * 0.75); gl.viewport(0, 0, canvas.width, canvas.height); }
+      if (cw !== canvas.width) { canvas.width = cw; canvas.height = Math.round(cw * 0.75); if (gl) gl.viewport(0, 0, canvas.width, canvas.height); }
       dirty = true; go();
     }
     new ResizeObserver(resize).observe(canvas);
