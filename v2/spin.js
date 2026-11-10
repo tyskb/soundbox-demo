@@ -2,10 +2,10 @@
 // Drag / swipe sideways to turn (vertical swipes still scroll), arrow keys step.
 // Each frame has a mask (red = shell, green = logo), so the shell colour is applied here on the GPU
 // instead of rendering 36 frames x 5 colours.
-// Smoothness: the view glides after the finger and cross-fades between neighbouring frames, so turning is
-// continuous rather than 10° jumps. Frames are decoded off the main thread (createImageBitmap) and
-// uploaded to the GPU at most one per animation frame; turning then only swaps textures. The page colour
-// is multiplied in the shader (no CSS blend mode for Chrome to recomposite).
+// Feel: the pod follows the finger 1:1 with crisp single frames (easing lagged behind the finger and
+// blending neighbours ghosted). Frames are decoded off the main thread (createImageBitmap) and uploaded
+// to the GPU at most one per animation frame; turning then only swaps textures. The page colour is
+// multiplied in the shader (no CSS blend mode for Chrome to recomposite).
 (function () {
   'use strict';
   var F = 36;
@@ -14,7 +14,7 @@
   var VS = 'attribute vec2 p;varying vec2 v;void main(){v=vec2(p.x*.5+.5,.5-p.y*.5);gl_Position=vec4(p,0.,1.);}';
   var FS = [
     'precision mediump float;',
-    'uniform sampler2D uA,uMA,uB,uMB;uniform vec3 uRatio,uBg;uniform float uLogo,uT;varying vec2 v;',
+    'uniform sampler2D uA,uMA;uniform vec3 uRatio,uBg;uniform float uLogo;varying vec2 v;',
     'vec3 shade(sampler2D img,sampler2D msk){',
     '  vec3 b=pow(texture2D(img,v).rgb,vec3(2.2));',              // to linear
     '  vec3 m=texture2D(msk,v).rgb;',
@@ -22,7 +22,7 @@
     '  return mix(o,vec3(.62),m.g*uLogo);',                         // light logo on dark shells
     '}',
     'void main(){',
-    '  vec3 o=mix(shade(uA,uMA),shade(uB,uMB),uT);',                // blend neighbouring frames
+    '  vec3 o=shade(uA,uMA);',
     '  gl_FragColor=vec4(pow(o,vec3(1./2.2))*uBg,1.);',             // white studio backdrop -> page colour
     '}'].join('\n');
 
@@ -51,8 +51,8 @@
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     var loc = gl.getAttribLocation(prog, 'p');
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    ['uA', 'uMA', 'uB', 'uMB'].forEach(function (n, u) { gl.uniform1i(gl.getUniformLocation(prog, n), u); });
-    var uRatio = gl.getUniformLocation(prog, 'uRatio'), uLogo = gl.getUniformLocation(prog, 'uLogo'), uT = gl.getUniformLocation(prog, 'uT');
+    ['uA', 'uMA'].forEach(function (n, u) { gl.uniform1i(gl.getUniformLocation(prog, n), u); });
+    var uRatio = gl.getUniformLocation(prog, 'uRatio'), uLogo = gl.getUniformLocation(prog, 'uLogo');
     var bg = srgb(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#eeece6');
     gl.uniform3f(gl.getUniformLocation(prog, 'uBg'), bg[0], bg[1], bg[2]);
 
@@ -137,28 +137,23 @@
       }
       return -1;
     }
-    function draw() {
+    var shown = -1;
+    function draw() {   // one crisp frame: blending neighbours ghosted, easing lagged behind the finger
       var set = sets[size]; if (!set || !ready) return;
-      var f = Math.floor(pos), t = pos - f, a = wrap(f), b = wrap(f + 1);
-      if (!set.tex[a] || !set.tex[b]) { a = b = nearest(set, Math.round(pos)); t = 0; }   // still loading
+      var a = wrap(Math.round(pos));
+      if (!set.tex[a]) a = nearest(set, a);           // still loading
       if (a < 0) return;
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, set.tex[a]);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, set.mask[a]);
-      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, set.tex[b]);
-      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, set.mask[b]);
       gl.uniform3f(uRatio, colour[0], colour[1], colour[2]);
       gl.uniform1f(uLogo, logo);
-      gl.uniform1f(uT, t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      shown = a;
     }
-    var last = 0;
-    function tick(now) {   // glide pos toward target; draw only when something changed
+    function tick() {   // follow the finger 1:1; redraw only when the frame (or colour/size) changes
       loop = 0;
-      var dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
-      var d = target - pos;
-      if (Math.abs(d) > 0.002) { pos += d * (reduce ? 1 : 1 - Math.exp(-dt * 18)); dirty = true; } else if (pos !== target) { pos = target; dirty = true; }
-      if (dirty) { dirty = false; draw(); }
-      if (pos !== target || coasting) loop = requestAnimationFrame(tick); else last = 0;
+      pos = target;
+      if (dirty || wrap(Math.round(pos)) !== shown) { dirty = false; draw(); }
     }
     function go() { if (!loop) loop = requestAnimationFrame(tick); }
     function resize() {
@@ -203,8 +198,13 @@
     });
     function nudge() {   // one small swing so people see it turns
       if (reduce || touched) return;
-      target = 3; go();
-      setTimeout(function () { if (!touched) { target = 0; go(); } }, 700);
+      var s0 = performance.now();
+      (function swing(t) {
+        if (touched) return;
+        var k = Math.min(1, (t - s0) / 1400);
+        target = Math.sin(k * Math.PI) * 3; go();
+        if (k < 1) requestAnimationFrame(swing);
+      })(s0);
     }
 
     fig.appendChild(canvas);
